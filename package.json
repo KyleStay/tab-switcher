@@ -1,0 +1,10 @@
+{
+  "name": "tab-switcher",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A VS Code-style quick tab switcher for Chrome.",
+  "type": "module",
+  "scripts": {
+    "test": "/Users/kyle/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node --test tests/*.test.mjs"
+  }
+}

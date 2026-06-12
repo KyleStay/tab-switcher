@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "Tab Switcher",
+  "version": "0.1.0",
+  "description": "A fast, IDE-style quick switcher for Chrome tabs.",
+  "permissions": ["tabs", "storage", "sessions"],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Open Tab Switcher",
+    "default_popup": "src/switcher.html"
+  },
+  "options_page": "src/options.html",
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+E",
+        "mac": "Command+E"
+      }
+    },
+    "switch-previous-tab": {
+      "suggested_key": {
+        "default": "Alt+Q",
+        "mac": "Option+Q"
+      },
+      "description": "Switch to the previous most recently used tab"
+    },
+    "switch-next-tab": {
+      "suggested_key": {
+        "default": "Alt+Shift+Q",
+        "mac": "Option+Shift+Q"
+      },
+      "description": "Switch backward through the most recently used tab list"
+    }
+  }
+}

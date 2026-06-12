@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Tab Switcher</title>
+    <link rel="stylesheet" href="switcher.css">
+  </head>
+  <body>
+    <main class="shell" data-density="compact">
+      <section class="onboarding" id="onboarding" hidden>
+        <div>
+          <h1>Tab Switcher</h1>
+          <p>Chrome may reserve shortcuts like Ctrl+Tab. Confirm Command+E or Ctrl+E in extension shortcut settings.</p>
+        </div>
+        <button type="button" id="shortcutSettingsButton">Shortcuts</button>
+        <button type="button" class="icon-button" id="dismissOnboardingButton" aria-label="Dismiss">×</button>
+      </section>
+
+      <label class="search">
+        <span class="prompt">›</span>
+        <input id="queryInput" type="search" autocomplete="off" spellcheck="false" placeholder="Search tabs">
+      </label>
+
+      <div class="meta">
+        <span id="resultSummary">Loading tabs…</span>
+        <button type="button" id="optionsButton">Options</button>
+      </div>
+
+      <ul class="results" id="results" role="listbox" aria-label="Tabs"></ul>
+
+      <footer class="hints">
+        <span>Enter switch</span>
+        <span>Esc close</span>
+        <span>Ctrl+W close tab</span>
+        <span>Ctrl+C copy URL</span>
+      </footer>
+    </main>
+    <script type="module" src="switcher.js"></script>
+  </body>
+</html>
