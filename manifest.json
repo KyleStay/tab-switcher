@@ -3,15 +3,25 @@
   "name": "Tab Switcher",
   "version": "0.1.0",
   "description": "A fast, IDE-style quick switcher for Chrome tabs.",
-  "permissions": ["tabs", "storage", "sessions"],
+  "permissions": ["tabs", "storage", "sessions", "activeTab", "scripting"],
   "background": {
     "service_worker": "src/background.js",
     "type": "module"
   },
   "action": {
-    "default_title": "Open Tab Switcher",
-    "default_popup": "src/switcher.html"
+    "default_title": "Open Tab Switcher"
   },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "src/core/fuzzy.js",
+        "src/core/defaults.js",
+        "src/core/messages.js",
+        "src/core/shortcuts.js"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "options_page": "src/options.html",
   "commands": {
     "_execute_action": {
@@ -20,19 +30,27 @@
         "mac": "Command+E"
       }
     },
+    "open-switcher-alt-windows": {
+      "suggested_key": {
+        "default": "Alt+E",
+        "mac": "Option+E",
+        "windows": "Alt+E"
+      },
+      "description": "Open the tab switcher"
+    },
     "switch-previous-tab": {
       "suggested_key": {
         "default": "Alt+Q",
         "mac": "Option+Q"
       },
-      "description": "Switch to the previous most recently used tab"
+      "description": "Cycle to the next older most recently used tab"
     },
     "switch-next-tab": {
       "suggested_key": {
         "default": "Alt+Shift+Q",
         "mac": "Option+Shift+Q"
       },
-      "description": "Switch backward through the most recently used tab list"
+      "description": "Cycle to the next newer most recently used tab"
     }
   }
 }

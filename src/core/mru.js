@@ -52,8 +52,16 @@ export function touchTab(state, tab, now = Date.now()) {
 export function updateTab(state, tab, now = Date.now()) {
   const key = tabKey(tab);
   const previous = state.byKey[key];
-  const normalized = normalizeTab({ ...previous, ...tab }, previous?.lastAccessed || now);
-  const order = state.order.includes(key) ? state.order : [...state.order, key];
+  const isNewActiveTab = !previous && tab.active;
+  const fallbackLastAccessed = tab.active
+    ? now
+    : Math.min(now - 1, ...Object.values(state.byKey).map((item) => item.lastAccessed ?? now)) - 1;
+  const normalized = normalizeTab({ ...previous, ...tab }, previous?.lastAccessed || fallbackLastAccessed);
+  const order = state.order.includes(key)
+    ? state.order
+    : isNewActiveTab
+      ? [key, ...state.order]
+      : [...state.order, key];
 
   return {
     byKey: { ...state.byKey, [key]: normalized },
@@ -79,6 +87,8 @@ export function removeTab(state, tabId, windowId) {
 }
 
 export function listTabs(state, { currentWindowId = null, currentWindowOnly = false } = {}) {
+  if (currentWindowOnly && currentWindowId === null) return [];
+
   const seen = new Set();
   const ordered = [];
 
@@ -105,8 +115,12 @@ export function getCycleTarget(state, activeTab, direction = 1, options = {}) {
   const activeKey = activeTab ? tabKey(activeTab) : null;
   const activeIndex = tabs.findIndex((tab) => tabKey(tab) === activeKey);
   const startIndex = activeIndex >= 0 ? activeIndex : 0;
-  const targetIndex = (startIndex + direction + tabs.length) % tabs.length;
+  const targetIndex = wrapIndex(startIndex + direction, tabs.length);
 
   return tabs[targetIndex] || null;
 }
 
+export function wrapIndex(index, length) {
+  if (length <= 0) return 0;
+  return ((index % length) + length) % length;
+}

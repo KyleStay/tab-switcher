@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Codex Agent Prompt: Fix Skinny Popup UI</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f6f8fa;
+        --panel: #ffffff;
+        --text: #17202a;
+        --muted: #57606a;
+        --border: #d0d7de;
+        --accent: #0969da;
+        --accent-soft: rgba(9, 105, 218, 0.1);
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0d1117;
+          --panel: #161b22;
+          --text: #e6edf3;
+          --muted: #8b949e;
+          --border: #30363d;
+          --accent: #58a6ff;
+          --accent-soft: rgba(88, 166, 255, 0.14);
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.55;
+      }
+
+      main {
+        width: min(980px, calc(100vw - 32px));
+        margin: 32px auto;
+      }
+
+      header,
+      section {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 22px;
+        margin-bottom: 16px;
+      }
+
+      h1,
+      h2 {
+        line-height: 1.2;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 28px;
+      }
+
+      h2 {
+        margin: 0 0 10px;
+        font-size: 18px;
+      }
+
+      p {
+        margin: 0 0 12px;
+      }
+
+      p:last-child,
+      ul:last-child,
+      ol:last-child {
+        margin-bottom: 0;
+      }
+
+      ul,
+      ol {
+        padding-left: 22px;
+      }
+
+      li {
+        margin: 7px 0;
+      }
+
+      code,
+      pre {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      }
+
+      code {
+        background: var(--accent-soft);
+        border-radius: 4px;
+        padding: 1px 4px;
+      }
+
+      pre {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 16px;
+      }
+
+      .summary {
+        color: var(--muted);
+        font-size: 15px;
+      }
+
+      .prompt {
+        border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+      }
+
+      .role-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+        gap: 12px;
+        padding-left: 0;
+        list-style: none;
+      }
+
+      .role-grid li {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 12px;
+        margin: 0;
+      }
+
+      .label {
+        display: block;
+        margin-bottom: 4px;
+        color: var(--accent);
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Codex Agent Prompt: Permanently Fix Skinny Popup UI</h1>
+        <p class="summary">
+          Use this as the kickoff brief for a team of Codex agents investigating the Tab Switcher popup becoming too skinny and unreadable.
+        </p>
+      </header>
+
+      <section class="prompt">
+        <h2>Copy/Paste Prompt</h2>
+        <pre>You are a coordinated team of Codex agents working in /Users/kyle/Documents/Tab Switcher.
+
+Project context:
+- Tab Switcher is a no-build Manifest V3 Chrome extension.
+- The popup is implemented by src/switcher.html, src/switcher.css, and src/switcher.js.
+- Pure logic lives in src/core/ and must stay free of Chrome globals.
+- Follow AGENTS.md. Keep changes small, focused, and compatible with plain ES modules.
+- The worktree may already contain user changes. Do not revert or overwrite unrelated edits.
+
+User problem:
+The popup UI is still sometimes way too skinny and unreadable. Investigate the real cause, permanently fix it, review the fix, and test it.
+
+Primary objective:
+Make the popup consistently readable whenever it opens. The solution should address the underlying layout/sizing failure, not merely mask one observed state. It should remain usable with long titles, long URLs, many badges, onboarding visible, compact/comfy density, light/dark/system themes, different browser zoom levels, and normal Chrome popup constraints.
+
+Initial areas to inspect:
+- src/switcher.css currently sizes html/body around a fixed popup width with viewport constraints. Investigate whether width, min-width, max-width, body sizing, root sizing, box sizing, overflow, or Chrome popup measurement behavior can collapse the popup.
+- src/switcher.html structure: onboarding, search row, meta/options row, results list, footer hints.
+- src/switcher.js generated row content: long titles, URLs, badges, current/restore/switch action text, duplicate/window/pinned/audio/incognito labels.
+- manifest.json action.default_popup and any command or options changes that could affect popup opening.
+- Options UI only if settings/density/theme can trigger the skinny state.
+
+Team roles:
+1. Lead investigator:
+   - Reproduce or approximate the skinny state.
+   - Identify all plausible root causes.
+   - Record exact viewport, popup, zoom, content, and settings conditions tested.
+2. Implementation agent:
+   - Apply the smallest durable UI/layout fix.
+   - Prefer CSS/layout changes unless JavaScript is required to make Chrome popup sizing deterministic.
+   - Preserve keyboard-first behavior and accessibility attributes.
+3. QA agent:
+   - Add automated coverage where practical for the no-build setup.
+   - Exercise generated popup rows with long/hostile content and multiple settings states.
+   - Run npm test.
+   - Reload the unpacked extension and smoke-test the popup manually in Chrome when possible.
+4. Review agent:
+   - Review the diff as if doing a production code review.
+   - Look specifically for regressions in popup width, text truncation, focus behavior, result navigation, onboarding, options link, keyboard shortcuts, and storage/settings usage.
+
+Investigation requirements:
+- Inspect the existing CSS sizing model before editing.
+- Check whether Chrome popup width is determined by html, body, main.shell, content intrinsic width, or max-width: 100vw interactions.
+- Test narrow content, empty/loading/error states, normal tab data, very long titles/URLs, and many row badges.
+- Verify that no text overlaps incoherently and no row metadata steals so much width that title/URL become unreadable.
+- Verify that the footer hints and onboarding controls do not force unexpected shrinkage or overflow.
+
+Fix expectations:
+- Establish a deterministic readable popup width under Chrome extension popup constraints.
+- Use stable min/max dimensions and responsive constraints appropriate for a popup.
+- Ensure title and URL text truncate cleanly instead of squeezing layout controls into unreadability.
+- Keep the UI accessible: focus ring remains visible, aria-activedescendant still updates, selected row is clear, and status text remains meaningful.
+- Avoid introducing a build step, new framework, or broad refactor.
+- Keep user-facing shortcut text aligned with manifest.json if touched.
+
+Testing expectations:
+- Run npm test.
+- Add or update tests if a testable helper is introduced.
+- If browser automation is available, create a small popup layout harness or direct file test that verifies minimum readable width and no horizontal collapse for representative content.
+- Manually reload the unpacked extension from chrome://extensions and smoke-test:
+  - fresh open/loading state
+  - search with matches
+  - no matches
+  - onboarding visible
+  - compact and comfy density
+  - light/dark/system themes
+  - long title, long URL, and several badges
+  - keyboard navigation and Enter activation path
+- Before handoff, run git status --short and list only the files intentionally changed.
+
+Acceptance criteria:
+- The popup no longer opens in a skinny unreadable state in tested scenarios.
+- Readable content width is protected even when Chrome measures the popup from minimal content.
+- Long content is ellipsized or wrapped intentionally; it never causes controls to overlap or the popup to collapse.
+- Functional tests pass.
+- The final response includes:
+  - root cause found
+  - files changed
+  - tests run and results
+  - manual QA performed or clearly stated blocker
+  - residual risks, if any
+
+Do not stop at a proposal. Investigate, implement, review, test, and report.</pre>
+      </section>
+
+      <section>
+        <h2>Suggested Agent Split</h2>
+        <ul class="role-grid">
+          <li>
+            <span class="label">Agent 1: Layout Investigator</span>
+            Reproduce the collapse, inspect Chrome popup sizing behavior, and write down the minimum set of conditions that trigger it.
+          </li>
+          <li>
+            <span class="label">Agent 2: Fix Owner</span>
+            Implement the durable sizing and row layout fix in the popup files with the narrowest useful diff.
+          </li>
+          <li>
+            <span class="label">Agent 3: Test Owner</span>
+            Build practical coverage, run <code>npm test</code>, and do browser smoke checks after reloading the unpacked extension.
+          </li>
+          <li>
+            <span class="label">Agent 4: Reviewer</span>
+            Review for regressions, accessibility issues, over-constrained popup sizing, and untested states.
+          </li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Notes For The Team</h2>
+        <ul>
+          <li>The current popup CSS is a prime suspect because <code>html, body</code> use fixed width plus <code>max-width: 100vw</code>, and extension popups can be sensitive to how the browser computes viewport and content width.</li>
+          <li>Keep the final fix robust against content extremes: long tab titles, long URLs, duplicate labels, pinned/audio/incognito badges, and onboarding buttons.</li>
+          <li>Prefer proving the bug cannot return with a layout harness or browser check instead of relying only on visual inspection.</li>
+        </ul>
+      </section>
+    </main>
+  </body>
+</html>

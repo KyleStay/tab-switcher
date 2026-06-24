@@ -1,7 +1,26 @@
 const EXACT_THRESHOLD = 25;
 
 export function buildSearchText(item) {
-  return `${item.title || ""} ${item.url || ""}`.trim();
+  return buildSearchDocument(item).text;
+}
+
+export function buildSearchDocument(item) {
+  const fields = [
+    ["title", item.title || ""],
+    ["url", item.displayUrl || item.url || ""]
+  ];
+  const offsets = {};
+  const parts = [];
+  let cursor = 0;
+
+  for (const [name, value] of fields) {
+    if (parts.length) cursor += 1;
+    offsets[name] = [cursor, cursor + value.length];
+    parts.push(value);
+    cursor += value.length;
+  }
+
+  return { text: parts.join(" "), offsets };
 }
 
 export function rankItems(items, query, options = {}) {
@@ -13,6 +32,8 @@ export function rankItems(items, query, options = {}) {
       item,
       score: 10_000 - index,
       ranges: [],
+      fieldRanges: { title: [], url: [] },
+      index,
       reason: "recent"
     }));
   }
@@ -22,7 +43,7 @@ export function rankItems(items, query, options = {}) {
   const ranked = [];
 
   items.forEach((item, index) => {
-    const text = buildSearchText(item);
+    const { text, offsets } = item.searchDocument || buildSearchDocument(item);
     const lower = text.toLocaleLowerCase();
     const allRanges = [];
     let total = 0;
@@ -39,13 +60,15 @@ export function rankItems(items, query, options = {}) {
       item,
       score: total + mruBoost,
       ranges: mergeRanges(allRanges),
+      fieldRanges: projectFieldRanges(allRanges, offsets),
+      index,
       reason: exactMode ? "exact" : "fuzzy"
     });
   });
 
   return ranked.sort((left, right) => {
     if (right.score !== left.score) return right.score - left.score;
-    return items.indexOf(left.item) - items.indexOf(right.item);
+    return left.index - right.index;
   }).slice(0, maxResults);
 }
 
@@ -60,6 +83,7 @@ export function fuzzyMatch(text, token) {
   for (const char of query) {
     const found = lower.indexOf(char, position);
     if (found === -1) return null;
+    const nextPosition = found + char.length;
 
     const isBoundary = found === 0 || /[\s/.\-_:?#=&]/.test(text[found - 1] || "");
     const isCamel = /[A-Z]/.test(text[found] || "") && found > 0 && /[a-z]/.test(text[found - 1] || "");
@@ -76,8 +100,8 @@ export function fuzzyMatch(text, token) {
       score -= Math.min(12, found - position);
     }
 
-    ranges.push([found, found + 1]);
-    position = found + 1;
+    ranges.push([found, nextPosition]);
+    position = nextPosition;
   }
 
   const prefix = lower.startsWith(query);
@@ -112,3 +136,17 @@ export function mergeRanges(ranges) {
   return merged;
 }
 
+export function projectFieldRanges(ranges, offsets) {
+  const projected = {};
+
+  for (const [name, [fieldStart, fieldEnd]] of Object.entries(offsets)) {
+    projected[name] = mergeRanges(ranges
+      .map(([start, end]) => [
+        Math.max(0, start - fieldStart),
+        Math.min(fieldEnd - fieldStart, end - fieldStart)
+      ])
+      .filter(([start, end]) => end > 0 && start < end));
+  }
+
+  return projected;
+}

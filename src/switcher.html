@@ -11,29 +11,45 @@
       <section class="onboarding" id="onboarding" hidden>
         <div>
           <h1>Tab Switcher</h1>
-          <p>Chrome may reserve shortcuts like Ctrl+Tab. Confirm Command+E or Ctrl+E in extension shortcut settings.</p>
+          <p>Chrome may reserve shortcuts like Ctrl+Tab. Confirm Command+E, Ctrl+E, Option+E, or Alt+E in extension shortcut settings.</p>
         </div>
         <button type="button" id="shortcutSettingsButton">Shortcuts</button>
         <button type="button" class="icon-button" id="dismissOnboardingButton" aria-label="Dismiss">×</button>
       </section>
 
-      <label class="search">
-        <span class="prompt">›</span>
-        <input id="queryInput" type="search" autocomplete="off" spellcheck="false" placeholder="Search tabs">
+      <label class="search" for="queryInput">
+        <span class="prompt" aria-hidden="true">&gt;</span>
+        <span class="sr-only">Search open and recently closed tabs</span>
+        <input
+          id="queryInput"
+          type="search"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="Search tabs"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-controls="results"
+          aria-expanded="true"
+        >
       </label>
 
       <div class="meta">
-        <span id="resultSummary">Loading tabs…</span>
-        <button type="button" id="optionsButton">Options</button>
+        <span id="resultSummary" role="status" aria-live="polite">Loading tabs...</span>
+        <div class="meta-actions">
+          <button type="button" id="extensionViewButton">Use popup here</button>
+          <button type="button" id="optionsButton">Options</button>
+        </div>
       </div>
 
-      <ul class="results" id="results" role="listbox" aria-label="Tabs"></ul>
+      <ul class="results" id="results" role="listbox" aria-label="Tabs" aria-busy="true"></ul>
+      <div class="empty results-message" id="resultsMessage" role="status" aria-live="polite" hidden></div>
 
       <footer class="hints">
         <span>Enter switch</span>
-        <span>Esc close</span>
-        <span>Ctrl+W close tab</span>
-        <span>Ctrl+C copy URL</span>
+        <span id="cycleHint">Arrows cycle</span>
+        <span>Esc clear/close</span>
+        <span id="copyHint">Ctrl+C copy URL</span>
+        <span id="closeHint">Ctrl+W close tab</span>
       </footer>
     </main>
     <script type="module" src="switcher.js"></script>

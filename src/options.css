@@ -50,6 +50,17 @@ p {
   color: var(--muted);
 }
 
+.shortcut-note {
+  max-width: 560px;
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+#shortcutSummary {
+  margin-top: 10px;
+}
+
 section {
   display: flex;
   justify-content: space-between;
@@ -61,12 +72,14 @@ section {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
 button,
 select,
+textarea,
 input[type="number"] {
   height: 34px;
   border: 1px solid var(--border);
@@ -76,12 +89,29 @@ input[type="number"] {
   padding: 0 10px;
 }
 
+textarea {
+  width: min(360px, 100%);
+  height: auto;
+  min-height: 108px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
 button {
   cursor: pointer;
 }
 
 button:hover {
   border-color: var(--accent);
+}
+
+button:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 .settings-grid {
@@ -103,3 +133,35 @@ label:last-child {
   border-bottom: 0;
 }
 
+.stacked-field {
+  align-items: flex-start;
+  padding-block: 10px;
+}
+
+.stacked-field span {
+  padding-top: 8px;
+}
+
+.setting-help {
+  margin: -8px 0 8px;
+  font-size: 13px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  justify-content: space-between;
+  margin-top: 14px;
+}
+
+.save-status {
+  min-height: 20px;
+  font-size: 13px;
+  color: var(--muted);
+  text-align: right;
+}
+
+.save-status[data-error="true"] {
+  color: #d1242f;
+}

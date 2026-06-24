@@ -16,27 +16,49 @@
       <section>
         <div>
           <h2>Shortcuts</h2>
-          <p id="shortcutSummary">Loading shortcuts…</p>
+          <p class="shortcut-note">Use the open-switcher shortcut for fast launch, Tab, arrows, or Ctrl/Cmd+J/K inside the switcher, and MRU cycle commands for direct tab switching.</p>
+          <p class="shortcut-note">Chrome may reserve Ctrl+Tab, so confirm or remap shortcuts in Chrome's extension shortcut settings.</p>
+          <p id="shortcutSummary">Loading shortcuts...</p>
         </div>
         <button type="button" id="openShortcutSettings">Open Chrome Shortcuts</button>
       </section>
 
-      <section class="settings-grid">
+      <section class="settings-grid" aria-describedby="saveStatus">
+        <label>
+          <span>Launch behavior</span>
+          <select name="launchMode" disabled>
+            <option value="hybrid">Overlay with popup fallback</option>
+            <option value="overlay">Overlay only</option>
+            <option value="popup">Popup only</option>
+          </select>
+        </label>
+        <p class="setting-help">Overlay opens fastest on normal webpages. Popup remains available for restricted Chrome pages.</p>
+        <label class="stacked-field">
+          <span>Always use extension view on these sites</span>
+          <textarea
+            name="extensionViewHosts"
+            rows="5"
+            spellcheck="false"
+            placeholder="mail.google.com&#10;docs.google.com"
+            disabled
+          ></textarea>
+        </label>
+        <p class="setting-help">One host per line. Paste a full URL or hostname.</p>
         <label>
           <span>Current window only</span>
-          <input type="checkbox" name="currentWindowOnly">
+          <input type="checkbox" name="currentWindowOnly" disabled>
         </label>
         <label>
           <span>Include recently closed tabs</span>
-          <input type="checkbox" name="includeClosedTabs">
+          <input type="checkbox" name="includeClosedTabs" disabled>
         </label>
         <label>
           <span>Restore previous query</span>
-          <input type="checkbox" name="restorePreviousQuery">
+          <input type="checkbox" name="restorePreviousQuery" disabled>
         </label>
         <label>
           <span>Theme</span>
-          <select name="theme">
+          <select name="theme" disabled>
             <option value="system">System</option>
             <option value="dark">Dark</option>
             <option value="light">Light</option>
@@ -44,16 +66,39 @@
         </label>
         <label>
           <span>Density</span>
-          <select name="density">
+          <select name="density" disabled>
             <option value="compact">Compact</option>
             <option value="comfy">Comfy</option>
           </select>
         </label>
         <label>
           <span>Maximum results</span>
-          <input type="number" name="maxResults" min="20" max="300" step="5">
+          <input type="number" name="maxResults" min="20" max="300" step="5" disabled>
+        </label>
+        <label>
+          <span>Automation expires after</span>
+          <input
+            type="number"
+            name="automationExpireMinutes"
+            min="1"
+            max="1440"
+            step="1"
+            inputmode="numeric"
+            aria-describedby="automationExpireHelp"
+            disabled
+          >
+        </label>
+        <p class="setting-help" id="automationExpireHelp">Duration in minutes for automation consumers to pick up.</p>
+        <label>
+          <span>Test keepalive prompt automation</span>
+          <input type="checkbox" name="testKeepalivePromptAutomation" disabled>
         </label>
       </section>
+
+      <div class="actions">
+        <button type="button" id="resetSettings" disabled>Reset to defaults</button>
+        <p class="save-status" id="saveStatus" role="status" aria-live="polite"></p>
+      </div>
     </main>
     <script type="module" src="options.js"></script>
   </body>

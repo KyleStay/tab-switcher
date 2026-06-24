@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Tab Switcher Guide</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f6f8fb;
+        --panel: #ffffff;
+        --panel-alt: #eef3f8;
+        --text: #17202a;
+        --muted: #5c6773;
+        --border: #d7dee8;
+        --accent: #0b6bcb;
+        --accent-soft: rgba(11, 107, 203, 0.1);
+        --good: #147a3d;
+        --warn: #9a6700;
+        --risk: #b42318;
+        --code: #26313f;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #15191f;
+          --panel: #1f252d;
+          --panel-alt: #252d37;
+          --text: #eef3f8;
+          --muted: #a7b2bf;
+          --border: #3c4653;
+          --accent: #6bb4ff;
+          --accent-soft: rgba(107, 180, 255, 0.14);
+          --good: #66d18f;
+          --warn: #e3b341;
+          --risk: #ff8a80;
+          --code: #f1f5f9;
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.6;
+      }
+
+      a {
+        color: var(--accent);
+      }
+
+      main {
+        width: min(1080px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 32px 0 56px;
+      }
+
+      header {
+        display: grid;
+        gap: 16px;
+        padding: 28px 0 24px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      h1,
+      h2,
+      h3 {
+        line-height: 1.2;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(2rem, 5vw, 4.5rem);
+        letter-spacing: 0;
+      }
+
+      h2 {
+        margin: 0 0 14px;
+        font-size: 1.55rem;
+      }
+
+      h3 {
+        margin: 20px 0 8px;
+        font-size: 1.05rem;
+      }
+
+      p {
+        margin: 0 0 12px;
+      }
+
+      ul,
+      ol {
+        margin: 8px 0 0;
+        padding-left: 22px;
+      }
+
+      li {
+        margin: 6px 0;
+      }
+
+      code,
+      kbd {
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        background: var(--panel-alt);
+        color: var(--code);
+        font: 0.92em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        padding: 0.12em 0.38em;
+      }
+
+      kbd {
+        white-space: nowrap;
+      }
+
+      .subtitle {
+        max-width: 760px;
+        margin: 0;
+        color: var(--muted);
+        font-size: 1.12rem;
+      }
+
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: var(--panel);
+        color: var(--muted);
+        padding: 0 10px;
+        font-size: 0.88rem;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 240px minmax(0, 1fr);
+        gap: 28px;
+        align-items: start;
+        margin-top: 28px;
+      }
+
+      nav {
+        position: sticky;
+        top: 16px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 14px;
+      }
+
+      nav a {
+        display: block;
+        border-radius: 6px;
+        color: var(--text);
+        padding: 7px 8px;
+        text-decoration: none;
+      }
+
+      nav a:hover {
+        background: var(--accent-soft);
+      }
+
+      section {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 22px;
+        margin-bottom: 18px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .callout {
+        border-left: 4px solid var(--accent);
+        border-radius: 6px;
+        background: var(--accent-soft);
+        padding: 12px 14px;
+      }
+
+      .review-list {
+        display: grid;
+        gap: 12px;
+      }
+
+      .review-item {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 14px;
+      }
+
+      .review-item strong {
+        display: block;
+        margin-bottom: 4px;
+      }
+
+      .good {
+        color: var(--good);
+      }
+
+      .warn {
+        color: var(--warn);
+      }
+
+      .risk {
+        color: var(--risk);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+      }
+
+      th,
+      td {
+        border-bottom: 1px solid var(--border);
+        padding: 10px 8px;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        color: var(--muted);
+        font-weight: 650;
+      }
+
+      .footer-note {
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
+
+      @media (max-width: 820px) {
+        .layout,
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        nav {
+          position: static;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="meta">
+          <span class="pill">Tab Switcher 0.1.0</span>
+          <span class="pill">Manifest V3 Chrome Extension</span>
+          <span class="pill">Guide and App Review</span>
+        </div>
+        <h1>Tab Switcher Guide</h1>
+        <p class="subtitle">A getting started guide, complete user guide, and practical review for the keyboard-first Chrome tab switcher in this repository.</p>
+      </header>
+
+      <div class="layout">
+        <nav aria-label="Guide sections">
+          <a href="#review">App Review</a>
+          <a href="#getting-started">Getting Started</a>
+          <a href="#daily-use">Daily Use</a>
+          <a href="#shortcuts">Shortcuts</a>
+          <a href="#settings">Settings</a>
+          <a href="#recently-closed">Recently Closed Tabs</a>
+          <a href="#native-helper">Native Helper</a>
+          <a href="#troubleshooting">Troubleshooting</a>
+          <a href="#privacy">Privacy</a>
+          <a href="#developers">Developer Notes</a>
+        </nav>
+
+        <div>
+          <section id="review">
+            <h2>App Review</h2>
+            <div class="review-list">
+              <div class="review-item">
+                <strong class="good">What works well</strong>
+                <p>The extension has a strong core shape: a fast popup, fuzzy title and URL ranking, MRU ordering, recently closed restore, command-based cycling, and a small options page. The pure logic lives in <code>src/core/</code>, which keeps ranking and MRU behavior easy to test.</p>
+              </div>
+              <div class="review-item">
+                <strong class="good">User experience strengths</strong>
+                <p>The popup supports reliable keyboard navigation, mouse selection, highlighted matches, badges for context, duplicate-title numbering, copy URL, close tab, density control, and first-run shortcut guidance. It feels appropriately close to an editor quick-open palette.</p>
+              </div>
+              <div class="review-item">
+                <strong class="warn">Important gap</strong>
+                <p>The <code>native/</code> folder describes a macOS <kbd>Ctrl</kbd>+<kbd>Tab</kbd> helper, but the current extension manifest does not request <code>nativeMessaging</code>, and <code>src/background.js</code> does not connect to <code>com.tab_switcher.native</code>. Treat the native helper as unfinished or experimental until that integration is added.</p>
+              </div>
+              <div class="review-item">
+                <strong class="warn">Manual QA still needed</strong>
+                <p>The automated Node tests cover core ranking, MRU behavior, shortcut mapping, settings defaults, and popup layout contracts. Browser smoke testing is still needed after extension UI or manifest changes: reload the unpacked extension, open the popup, verify shortcuts, switch tabs, restore a closed tab, and save options.</p>
+              </div>
+            </div>
+          </section>
+
+          <section id="getting-started">
+            <h2>Getting Started</h2>
+            <ol>
+              <li>Open Chrome and go to <code>chrome://extensions</code>.</li>
+              <li>Turn on <strong>Developer mode</strong>.</li>
+              <li>Choose <strong>Load unpacked</strong>.</li>
+              <li>Select the project folder: <code>/Users/kyle/Documents/Tab Switcher</code>.</li>
+              <li>Pin Tab Switcher from Chrome's extensions menu if you want mouse access to the popup.</li>
+              <li>Open <code>chrome://extensions/shortcuts</code> and confirm or assign the shortcuts.</li>
+            </ol>
+            <div class="callout">
+              <p><strong>First thing to check:</strong> Chrome may leave suggested shortcuts unassigned if they conflict with browser or system shortcuts. The extension will show shortcut guidance on first run when the popup shortcut is missing.</p>
+            </div>
+          </section>
+
+          <section id="daily-use">
+            <h2>Daily Use</h2>
+            <div class="grid">
+              <div>
+                <h3>Open the Switcher</h3>
+                <p>Use the assigned open-switcher shortcut or click the extension icon. The popup lists open tabs in most-recently-used order.</p>
+              </div>
+              <div>
+                <h3>Search Tabs</h3>
+                <p>Type part of a title or URL. Short queries use fuzzy matching, so initials and partial words work well. Long queries use exact matching for more predictable results.</p>
+              </div>
+              <div>
+                <h3>Choose a Result</h3>
+                <p>Use <kbd>Tab</kbd>, <kbd>Shift</kbd>+<kbd>Tab</kbd>, arrow keys, page keys, <kbd>Command</kbd>/<kbd>Ctrl</kbd> editor-style movement chords, or the mouse to select a row. Press <kbd>Enter</kbd> to switch to an open tab or restore a closed tab.</p>
+              </div>
+              <div>
+                <h3>Understand Rows</h3>
+                <p>Rows show the title, simplified URL, favicon, action, and badges such as current tab, recently closed, pinned, audio, muted, incognito, duplicate number, or window ID.</p>
+              </div>
+            </div>
+          </section>
+
+          <section id="shortcuts">
+            <h2>Shortcuts</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Action</th>
+                  <th>Default shortcut</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Open switcher</td>
+                  <td><kbd>Command</kbd>+<kbd>E</kbd> on macOS, <kbd>Ctrl</kbd>+<kbd>E</kbd> elsewhere, plus <kbd>Alt</kbd>+<kbd>E</kbd> on Windows</td>
+                  <td>Configured by Chrome as extension shortcuts. Use the movement shortcuts below after the popup opens.</td>
+                </tr>
+                <tr>
+                  <td>Cycle to older MRU tab</td>
+                  <td><kbd>Option</kbd>+<kbd>Q</kbd> on macOS, <kbd>Alt</kbd>+<kbd>Q</kbd> elsewhere</td>
+                  <td>Works outside the popup and moves through tabs from newer to older recent use.</td>
+                </tr>
+                <tr>
+                  <td>Cycle to newer MRU tab</td>
+                  <td><kbd>Option</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd> on macOS, <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd> elsewhere</td>
+                  <td>Works outside the popup and moves backward through the same MRU session.</td>
+                </tr>
+                <tr>
+                  <td>Move popup selection</td>
+                  <td><kbd>Tab</kbd>, <kbd>Shift</kbd>+<kbd>Tab</kbd>, <kbd>Arrow Down</kbd>, <kbd>Arrow Up</kbd>, <kbd>Ctrl</kbd>+<kbd>N</kbd>, <kbd>Ctrl</kbd>+<kbd>P</kbd>, <kbd>Ctrl</kbd>+<kbd>J</kbd>, <kbd>Ctrl</kbd>+<kbd>K</kbd></td>
+                  <td>Works inside the focused popup. On macOS, <kbd>Command</kbd> also works for the letter chords.</td>
+                </tr>
+                <tr>
+                  <td>Jump through results</td>
+                  <td><kbd>Page Down</kbd>, <kbd>Page Up</kbd>, <kbd>Home</kbd>, <kbd>End</kbd></td>
+                  <td>Useful when many results are visible.</td>
+                </tr>
+                <tr>
+                  <td>Activate selected</td>
+                  <td><kbd>Enter</kbd></td>
+                  <td>Switches to an open tab or restores a recently closed tab.</td>
+                </tr>
+                <tr>
+                  <td>Close selected open tab</td>
+                  <td><kbd>Command</kbd>+<kbd>W</kbd> on macOS, <kbd>Ctrl</kbd>+<kbd>W</kbd> elsewhere</td>
+                  <td>Does nothing for recently closed rows.</td>
+                </tr>
+                <tr>
+                  <td>Copy selected URL</td>
+                  <td><kbd>Command</kbd>+<kbd>C</kbd> on macOS, <kbd>Ctrl</kbd>+<kbd>C</kbd> elsewhere</td>
+                  <td>Copies the selected row's URL to the clipboard.</td>
+                </tr>
+                <tr>
+                  <td>Clear or close</td>
+                  <td><kbd>Esc</kbd></td>
+                  <td>Clears the search box first. If it is already empty, closes the popup.</td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="callout">
+              <p><strong>About <kbd>Ctrl</kbd>+<kbd>Tab</kbd>:</strong> Chrome normally owns browser tab-switching shortcuts before extension popup JavaScript can see them. Tab Switcher uses configurable extension shortcuts instead of promising control over reserved browser shortcuts.</p>
+            </div>
+          </section>
+
+          <section id="settings">
+            <h2>Settings</h2>
+            <p>Open settings from the popup's <strong>Options</strong> button, the extension details page, or Chrome's extension menu.</p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Setting</th>
+                  <th>What it does</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Current window only</td>
+                  <td>Limits popup results and MRU cycling to the active Chrome window.</td>
+                </tr>
+                <tr>
+                  <td>Include recently closed tabs</td>
+                  <td>Adds restorable closed tabs to the result list using Chrome sessions.</td>
+                </tr>
+                <tr>
+                  <td>Restore previous query</td>
+                  <td>Restores the last non-empty popup search during the same browser session.</td>
+                </tr>
+                <tr>
+                  <td>Theme</td>
+                  <td>Uses system, dark, or light styling for the popup.</td>
+                </tr>
+                <tr>
+                  <td>Density</td>
+                  <td>Chooses compact or comfy result row spacing.</td>
+                </tr>
+                <tr>
+                  <td>Maximum results</td>
+                  <td>Controls how many ranked results the popup displays. The options UI allows values from 20 to 300.</td>
+                </tr>
+                <tr>
+                  <td>Automation expires after</td>
+                  <td>Stores a duration in minutes, from 1 to 1440, for automation consumers to read from extension settings.</td>
+                </tr>
+                <tr>
+                  <td>Test keepalive prompt automation</td>
+                  <td>Activates a test keepalive prompt automation flag in settings so the app can detect and exercise that path.</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section id="recently-closed">
+            <h2>Recently Closed Tabs</h2>
+            <p>When <strong>Include recently closed tabs</strong> is enabled, Tab Switcher asks Chrome for recent tab sessions and adds matching closed tabs below the open-tab results. Closed tabs are labeled <strong>Recently closed</strong> and use <strong>Restore</strong> as their action.</p>
+            <p>Press <kbd>Enter</kbd> on a closed-tab result to restore it. The extension relies on Chrome's session restore data, so availability depends on what Chrome still has in its recently closed list.</p>
+          </section>
+
+          <section id="native-helper">
+            <h2>Native Helper</h2>
+            <p>The repository includes a macOS native helper intended to intercept <kbd>Ctrl</kbd>+<kbd>Tab</kbd> and <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Tab</kbd>, then communicate with the extension through Chrome Native Messaging.</p>
+            <div class="callout">
+              <p><strong>Current status:</strong> the helper files exist, but the extension is not currently wired to them. The manifest lacks the <code>nativeMessaging</code> permission, and the background service worker does not open a native messaging port. Use the standard Chrome extension shortcuts until native integration is completed.</p>
+            </div>
+            <p><code>native/README.md</code> documents the prototype host files for future development, not a supported user setup.</p>
+          </section>
+
+          <section id="troubleshooting">
+            <h2>Troubleshooting</h2>
+            <h3>The shortcut does not open the popup</h3>
+            <p>Go to <code>chrome://extensions/shortcuts</code> and make sure Tab Switcher has an assigned shortcut. Chrome may reject or reserve some combinations.</p>
+            <h3>Results look stale</h3>
+            <p>Reload the unpacked extension from <code>chrome://extensions</code>. The service worker refreshes tab state on install, startup, and tab/window events.</p>
+            <h3>Recently closed tabs are missing</h3>
+            <p>Confirm that <strong>Include recently closed tabs</strong> is enabled. Chrome may also limit what it returns through its sessions API.</p>
+            <h3>Options do not save</h3>
+            <p>Check the options page status line. Settings are saved to <code>chrome.storage.local</code>; reloading the extension can help after manifest or source changes.</p>
+          </section>
+
+          <section id="privacy">
+            <h2>Privacy</h2>
+            <p>Tab Switcher uses the Chrome <code>tabs</code>, <code>storage</code>, and <code>sessions</code> permissions. It reads tab titles, URLs, favicons, window IDs, and recently closed tab sessions so it can rank, display, switch, close, and restore tabs.</p>
+            <p>Settings and MRU tab state are stored locally through <code>chrome.storage.local</code>. There is no network code in the extension source reviewed for this guide.</p>
+          </section>
+
+          <section id="developers">
+            <h2>Developer Notes</h2>
+            <p>This project intentionally has no build step. Core logic lives in <code>src/core/</code>, Chrome API integration lives in <code>src/background.js</code>, and the popup/options pages use plain ES modules.</p>
+            <p>Run tests with:</p>
+            <p><code>npm test</code></p>
+            <p class="footer-note">Verification for this repository should always include <code>npm test</code>. Browser-facing changes also need an unpacked-extension reload and smoke test in Chrome.</p>
+          </section>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>
