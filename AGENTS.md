@@ -26,6 +26,20 @@ Tab Switcher is a Manifest V3 Chrome extension for fast, keyboard-first tab swit
 - Keep user-facing shortcut text in sync with `manifest.json`.
 - Use `chrome.storage.local` keys from `src/core/defaults.js` instead of hard-coded strings.
 
+## Codex Usage Window Efficiency
+
+- Use bounded reads: `sed -n '1,120p' file.js`, `head -n 60 logs.txt`, `tail -n 40 logs.txt`, `rg --max-count 40 "TODO" src`, and `ls -1 src | head -n 50`.
+- Skip wide dumps: avoid raw `cat`, unconstrained `find`, and unconstrained `rg`; if you need a file list, do `rg --files | head -n 100`.
+- Summarize telemetry first: in SQL, select only what you need, then add `WHERE`, `ORDER BY`, `LIMIT` (for example `SELECT ts, event, user_id FROM events WHERE ts >= NOW()-INTERVAL '1 day' ORDER BY ts DESC LIMIT 20;`).
+- Use fast prechecks: start with `SELECT COUNT(*) FROM events WHERE level='error';` then run a narrow follow-up query only if needed (`SELECT ... LIMIT 25`).
+- Get top patterns without full scans: run `SELECT pattern, COUNT(*) AS hits FROM traces GROUP BY pattern ORDER BY hits DESC LIMIT 10;` before reading raw trace rows.
+- Avoid repeated broad scans: if you edit one command, reuse or narrow the previous command instead of re-running the same large query/file read.
+- Combine related reads into one pass: `rg "error|warn|fail" src -n --max-count 80` gives both error patterns in one command.
+- Keep outputs tiny: append `| head`, `--max-count`, `LIMIT`, and narrow ranges (for example `git log --oneline -n 30`), and use `--stat` instead of full patch output when enough.
+- Don’t fetch raw logs unless required: prefer summaries like `rg "error" logs/*.json --max-count 25` and pull full logs only when debugging a specific case.
+- Reduce token load per turn: ask for exact asks (top 10 spikes, top callers, top failed endpoints) and avoid requesting full transcripts.
+- Keep context tight in your updates: provide concise one- or two-line results summaries instead of reprinting command history.
+
 ## Verification
 
 Before handing off functional changes:
