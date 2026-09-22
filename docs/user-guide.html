@@ -333,7 +333,7 @@
               </div>
               <div>
                 <h3>Choose a Result</h3>
-                <p>Use <kbd>Tab</kbd>, <kbd>Shift</kbd>+<kbd>Tab</kbd>, arrow keys, page keys, <kbd>Command</kbd>/<kbd>Ctrl</kbd> editor-style movement chords, or the mouse to select a row. Press <kbd>Enter</kbd> to switch to an open tab or restore a closed tab.</p>
+                <p>Use arrow keys, page keys, <kbd>Command</kbd>/<kbd>Ctrl</kbd> editor-style movement chords, or the mouse to select a row. Press <kbd>Enter</kbd> to switch to an open tab or restore a closed tab. <kbd>Tab</kbd> and <kbd>Shift</kbd>+<kbd>Tab</kbd> move between search and buttons.</p>
               </div>
               <div>
                 <h3>Understand Rows</h3>
@@ -370,7 +370,7 @@
                 </tr>
                 <tr>
                   <td>Move popup selection</td>
-                  <td><kbd>Tab</kbd>, <kbd>Shift</kbd>+<kbd>Tab</kbd>, <kbd>Arrow Down</kbd>, <kbd>Arrow Up</kbd>, <kbd>Ctrl</kbd>+<kbd>N</kbd>, <kbd>Ctrl</kbd>+<kbd>P</kbd>, <kbd>Ctrl</kbd>+<kbd>J</kbd>, <kbd>Ctrl</kbd>+<kbd>K</kbd></td>
+                  <td><kbd>Arrow Down</kbd>, <kbd>Arrow Up</kbd>, <kbd>Ctrl</kbd>+<kbd>N</kbd>, <kbd>Ctrl</kbd>+<kbd>P</kbd>, <kbd>Ctrl</kbd>+<kbd>J</kbd>, <kbd>Ctrl</kbd>+<kbd>K</kbd></td>
                   <td>Works inside the focused popup. On macOS, <kbd>Command</kbd> also works for the letter chords.</td>
                 </tr>
                 <tr>
@@ -418,7 +418,7 @@
               <tbody>
                 <tr>
                   <td>Current window only</td>
-                  <td>Limits popup results and MRU cycling to the active Chrome window.</td>
+                  <td>Limits switcher results to the active Chrome window. The separate Most recent tab scope setting controls direct MRU shortcuts.</td>
                 </tr>
                 <tr>
                   <td>Include recently closed tabs</td>
@@ -426,7 +426,7 @@
                 </tr>
                 <tr>
                   <td>Restore previous query</td>
-                  <td>Restores the last non-empty popup search during the same browser session.</td>
+                  <td>Restores the last search during the same browser session. Disabled while private tab support is enabled.</td>
                 </tr>
                 <tr>
                   <td>Theme</td>
@@ -439,14 +439,6 @@
                 <tr>
                   <td>Maximum results</td>
                   <td>Controls how many ranked results the popup displays. The options UI allows values from 20 to 300.</td>
-                </tr>
-                <tr>
-                  <td>Automation expires after</td>
-                  <td>Stores a duration in minutes, from 1 to 1440, for automation consumers to read from extension settings.</td>
-                </tr>
-                <tr>
-                  <td>Test keepalive prompt automation</td>
-                  <td>Activates a test keepalive prompt automation flag in settings so the app can detect and exercise that path.</td>
                 </tr>
               </tbody>
             </table>
@@ -482,7 +474,8 @@
           <section id="privacy">
             <h2>Privacy</h2>
             <p>Tab Switcher uses the Chrome <code>tabs</code>, <code>storage</code>, and <code>sessions</code> permissions. It reads tab titles, URLs, favicons, window IDs, and recently closed tab sessions so it can rank, display, switch, close, and restore tabs.</p>
-            <p>Settings and MRU tab state are stored locally through <code>chrome.storage.local</code>. There is no network code in the extension source reviewed for this guide.</p>
+            <p>Settings are stored locally through <code>chrome.storage.local</code>. Tab recency comes directly from Chrome, without saving titles or URLs to disk. Optional search queries use extension session storage and are disabled while private tab support is enabled. Favicons may load from their original sites.</p>
+            <p>The overlay uses the same UI as the popup inside an extension iframe. Webpages cannot read its contents. Private masking applies to titles, URL paths, domains, and favicons; timed reveals redact automatically.</p>
           </section>
 
           <section id="developers">

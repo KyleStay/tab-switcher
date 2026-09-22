@@ -2,25 +2,35 @@ export const STORAGE_KEYS = {
   tabs: "tabSwitcher.tabs",
   settings: "tabSwitcher.settings",
   firstRunSeen: "tabSwitcher.firstRunSeen",
-  lastQuery: "tabSwitcher.lastQuery"
+  lastQuery: "tabSwitcher.lastQuery",
+  overlayToken: "tabSwitcher.overlayToken"
 };
 
 export const DEFAULT_SETTINGS = {
   currentWindowOnly: false,
+  mruCycleScope: "all-windows",
   includeClosedTabs: true,
   restorePreviousQuery: false,
-  launchMode: "hybrid",
+  launchMode: "popup",
   extensionViewHosts: [],
   theme: "system",
   density: "compact",
   maxResults: 75,
-  automationExpireMinutes: 15,
-  testKeepalivePromptAutomation: false
+  privateTabsEnabled: false,
+  privateTabDisplayMode: "grouped",
+  privateTabIndicator: "icon",
+  privateMaskTitle: true,
+  privateMaskUrl: true,
+  privateMaskDomain: true,
+  privateMaskFavicon: true,
+  privateRevealMode: "selected",
+  privateRevealDurationMinutes: 5,
+  privateSearchHiddenContent: false
 };
 
 export const SETTING_LIMITS = {
   maxResults: { min: 20, max: 300 },
-  automationExpireMinutes: { min: 1, max: 1440 }
+  privateRevealDurationMinutes: { min: 1, max: 1440 }
 };
 
 export const COMMAND_LABELS = {
@@ -31,6 +41,7 @@ export const COMMAND_LABELS = {
 };
 
 export function mergeSettings(value = {}) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) value = {};
   const merged = {
     ...DEFAULT_SETTINGS,
     ...Object.fromEntries(
@@ -40,9 +51,14 @@ export function mergeSettings(value = {}) {
 
   return {
     currentWindowOnly: normalizeBoolean(merged.currentWindowOnly, DEFAULT_SETTINGS.currentWindowOnly),
+    mruCycleScope: normalizeEnum(
+      merged.mruCycleScope,
+      ["all-windows", "current-window"],
+      DEFAULT_SETTINGS.mruCycleScope
+    ),
     includeClosedTabs: normalizeBoolean(merged.includeClosedTabs, DEFAULT_SETTINGS.includeClosedTabs),
     restorePreviousQuery: normalizeBoolean(merged.restorePreviousQuery, DEFAULT_SETTINGS.restorePreviousQuery),
-    launchMode: normalizeEnum(merged.launchMode, ["hybrid", "overlay", "popup"], DEFAULT_SETTINGS.launchMode),
+    launchMode: normalizeEnum(merged.launchMode === "overlay" ? "hybrid" : merged.launchMode, ["hybrid", "popup"], DEFAULT_SETTINGS.launchMode),
     extensionViewHosts: normalizeHostList(merged.extensionViewHosts),
     theme: normalizeEnum(merged.theme, ["system", "dark", "light"], DEFAULT_SETTINGS.theme),
     density: normalizeEnum(merged.density, ["compact", "comfy"], DEFAULT_SETTINGS.density),
@@ -52,15 +68,35 @@ export function mergeSettings(value = {}) {
       SETTING_LIMITS.maxResults.max,
       DEFAULT_SETTINGS.maxResults
     ),
-    automationExpireMinutes: normalizeInteger(
-      merged.automationExpireMinutes,
-      SETTING_LIMITS.automationExpireMinutes.min,
-      SETTING_LIMITS.automationExpireMinutes.max,
-      DEFAULT_SETTINGS.automationExpireMinutes
+    privateTabsEnabled: normalizeBoolean(merged.privateTabsEnabled, DEFAULT_SETTINGS.privateTabsEnabled),
+    privateTabDisplayMode: normalizeEnum(
+      merged.privateTabDisplayMode,
+      ["hidden", "grouped", "integrated"],
+      DEFAULT_SETTINGS.privateTabDisplayMode
     ),
-    testKeepalivePromptAutomation: normalizeBoolean(
-      merged.testKeepalivePromptAutomation,
-      DEFAULT_SETTINGS.testKeepalivePromptAutomation
+    privateTabIndicator: normalizeEnum(
+      merged.privateTabIndicator,
+      ["icon", "label", "icon-label", "none"],
+      DEFAULT_SETTINGS.privateTabIndicator
+    ),
+    privateMaskTitle: normalizeBoolean(merged.privateMaskTitle, DEFAULT_SETTINGS.privateMaskTitle),
+    privateMaskUrl: normalizeBoolean(merged.privateMaskUrl, DEFAULT_SETTINGS.privateMaskUrl),
+    privateMaskDomain: normalizeBoolean(merged.privateMaskDomain, DEFAULT_SETTINGS.privateMaskDomain),
+    privateMaskFavicon: normalizeBoolean(merged.privateMaskFavicon, DEFAULT_SETTINGS.privateMaskFavicon),
+    privateRevealMode: normalizeEnum(
+      merged.privateRevealMode,
+      ["never", "selected", "session", "timed", "manual"],
+      DEFAULT_SETTINGS.privateRevealMode
+    ),
+    privateRevealDurationMinutes: normalizeInteger(
+      merged.privateRevealDurationMinutes,
+      SETTING_LIMITS.privateRevealDurationMinutes.min,
+      SETTING_LIMITS.privateRevealDurationMinutes.max,
+      DEFAULT_SETTINGS.privateRevealDurationMinutes
+    ),
+    privateSearchHiddenContent: normalizeBoolean(
+      merged.privateSearchHiddenContent,
+      DEFAULT_SETTINGS.privateSearchHiddenContent
     )
   };
 }

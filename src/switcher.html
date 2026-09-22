@@ -36,13 +36,15 @@
       <div class="meta">
         <span id="resultSummary" role="status" aria-live="polite">Loading tabs...</span>
         <div class="meta-actions">
+          <button type="button" id="retryButton" hidden>Retry</button>
+          <button type="button" id="popupButton" hidden>Popup</button>
           <button type="button" id="extensionViewButton">Use popup here</button>
           <button type="button" id="optionsButton">Options</button>
         </div>
       </div>
 
       <ul class="results" id="results" role="listbox" aria-label="Tabs" aria-busy="true"></ul>
-      <div class="empty results-message" id="resultsMessage" role="status" aria-live="polite" hidden></div>
+      <div class="empty results-message" id="resultsMessage" hidden></div>
 
       <footer class="hints">
         <span>Enter switch</span>
@@ -50,6 +52,7 @@
         <span>Esc clear/close</span>
         <span id="copyHint">Ctrl+C copy URL</span>
         <span id="closeHint">Ctrl+W close tab</span>
+        <span id="revealHint" hidden></span>
       </footer>
     </main>
     <script type="module" src="switcher.js"></script>

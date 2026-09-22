@@ -2,7 +2,7 @@ export function tabKey(tab) {
   return `${tab.windowId}:${tab.id}`;
 }
 
-export function normalizeTab(tab, lastAccessed = Date.now()) {
+export function normalizeTab(tab, lastAccessed = getLastAccessed(tab, Date.now())) {
   return {
     id: tab.id,
     windowId: tab.windowId,
@@ -26,7 +26,7 @@ export function createInitialState(tabs = [], now = Date.now()) {
 
   for (const tab of tabs) {
     if (typeof tab.id !== "number" || typeof tab.windowId !== "number") continue;
-    const normalized = normalizeTab(tab, tab.active ? now : now - tab.index - 1);
+    const normalized = normalizeTab(tab, getLastAccessed(tab, tab.active ? now : now - tab.index - 1));
     const key = tabKey(normalized);
     byKey[key] = normalized;
     order.push(key);
@@ -37,60 +37,20 @@ export function createInitialState(tabs = [], now = Date.now()) {
   return { byKey, order };
 }
 
-export function touchTab(state, tab, now = Date.now()) {
-  const key = tabKey(tab);
-  const previous = state.byKey[key] || {};
-  const normalized = normalizeTab({ ...previous, ...tab }, now);
-  const order = [key, ...state.order.filter((item) => item !== key)];
-
-  return {
-    byKey: { ...state.byKey, [key]: normalized },
-    order
-  };
-}
-
-export function updateTab(state, tab, now = Date.now()) {
-  const key = tabKey(tab);
-  const previous = state.byKey[key];
-  const isNewActiveTab = !previous && tab.active;
-  const fallbackLastAccessed = tab.active
-    ? now
-    : Math.min(now - 1, ...Object.values(state.byKey).map((item) => item.lastAccessed ?? now)) - 1;
-  const normalized = normalizeTab({ ...previous, ...tab }, previous?.lastAccessed || fallbackLastAccessed);
-  const order = state.order.includes(key)
-    ? state.order
-    : isNewActiveTab
-      ? [key, ...state.order]
-      : [...state.order, key];
-
-  return {
-    byKey: { ...state.byKey, [key]: normalized },
-    order
-  };
-}
-
-export function removeTab(state, tabId, windowId) {
-  const exactKey = typeof windowId === "number" ? `${windowId}:${tabId}` : null;
-  const keysToRemove = exactKey
-    ? new Set([exactKey])
-    : new Set(Object.keys(state.byKey).filter((key) => key.endsWith(`:${tabId}`)));
-
-  const byKey = {};
-  for (const [key, tab] of Object.entries(state.byKey)) {
-    if (!keysToRemove.has(key)) byKey[key] = tab;
-  }
-
-  return {
-    byKey,
-    order: state.order.filter((key) => !keysToRemove.has(key))
-  };
-}
-
-export function listTabs(state, { currentWindowId = null, currentWindowOnly = false } = {}) {
+export function listTabs(state, { activeTab = null, currentWindowId = null, currentWindowOnly = false } = {}) {
   if (currentWindowOnly && currentWindowId === null) return [];
 
   const seen = new Set();
   const ordered = [];
+  const activeKey = activeTab ? tabKey(activeTab) : null;
+
+  if (activeKey) {
+    const active = state.byKey[activeKey];
+    if (active && (!currentWindowOnly || active.windowId === currentWindowId)) {
+      seen.add(activeKey);
+      ordered.push(active);
+    }
+  }
 
   for (const key of state.order) {
     const tab = state.byKey[key];
@@ -108,19 +68,11 @@ export function listTabs(state, { currentWindowId = null, currentWindowOnly = fa
   return [...ordered, ...missing];
 }
 
-export function getCycleTarget(state, activeTab, direction = 1, options = {}) {
-  const tabs = listTabs(state, options);
-  if (tabs.length < 2) return null;
-
-  const activeKey = activeTab ? tabKey(activeTab) : null;
-  const activeIndex = tabs.findIndex((tab) => tabKey(tab) === activeKey);
-  const startIndex = activeIndex >= 0 ? activeIndex : 0;
-  const targetIndex = wrapIndex(startIndex + direction, tabs.length);
-
-  return tabs[targetIndex] || null;
-}
-
 export function wrapIndex(index, length) {
   if (length <= 0) return 0;
   return ((index % length) + length) % length;
+}
+
+export function getLastAccessed(tab, fallback) {
+  return Number.isFinite(tab?.lastAccessed) ? tab.lastAccessed : fallback;
 }

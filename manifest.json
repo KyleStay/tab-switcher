@@ -2,6 +2,7 @@
   "manifest_version": 3,
   "name": "Tab Switcher",
   "version": "0.1.0",
+  "minimum_chrome_version": "127",
   "description": "A fast, IDE-style quick switcher for Chrome tabs.",
   "permissions": ["tabs", "storage", "sessions", "activeTab", "scripting"],
   "background": {
@@ -14,10 +15,7 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "src/core/fuzzy.js",
-        "src/core/defaults.js",
-        "src/core/messages.js",
-        "src/core/shortcuts.js"
+        "src/switcher.html"
       ],
       "matches": ["<all_urls>"]
     }
