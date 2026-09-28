@@ -2,37 +2,18 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   DEFAULT_EXTENSION_VIEW_HOSTS,
-  MESSAGE_TYPES,
   canUseOverlayOnTab,
-  createShowOverlayMessage,
-  isShowOverlayMessage,
-  shouldFallbackToPopup,
   shouldTryOverlay
 } from "../src/core/messages.js";
 
 test("launch mode helpers describe overlay attempts", () => {
   assert.equal(shouldTryOverlay("hybrid"), true);
-  assert.equal(shouldTryOverlay("overlay"), true);
+  assert.equal(shouldTryOverlay("overlay"), false);
   assert.equal(shouldTryOverlay("popup"), false);
 });
 
-test("launch mode helpers describe popup fallback", () => {
-  assert.equal(shouldFallbackToPopup("hybrid"), true);
-  assert.equal(shouldFallbackToPopup("popup"), true);
-  assert.equal(shouldFallbackToPopup("overlay"), false);
-});
-
-test("show overlay message has stable shape", () => {
-  const message = createShowOverlayMessage({ reason: "command" });
-  assert.deepEqual(message, {
-    type: MESSAGE_TYPES.showOverlay,
-    reason: "command"
-  });
-  assert.equal(isShowOverlayMessage(message), true);
-  assert.equal(isShowOverlayMessage({ type: "get-state" }), false);
-});
-
 test("overlay eligibility excludes loading and restricted pages", () => {
+  assert.equal(canUseOverlayOnTab({ id: 1, incognito: true, url: "https://example.com" }), false);
   assert.equal(canUseOverlayOnTab({ id: 1, status: "complete", url: "https://example.com" }), true);
   assert.equal(canUseOverlayOnTab({ id: 1, status: "complete", url: "file:///tmp/example.html" }), true);
   assert.equal(canUseOverlayOnTab({ id: 1, status: "loading", url: "https://example.com" }), false);

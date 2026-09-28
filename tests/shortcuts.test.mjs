@@ -25,9 +25,9 @@ test("popup navigation maps home and end keys", () => {
   assert.deepEqual(getPopupNavigationAction(keyEvent({ key: "End" })), { type: "select", position: "last" });
 });
 
-test("popup navigation maps tab and shift tab like list movement", () => {
-  assert.deepEqual(getPopupNavigationAction(keyEvent({ key: "Tab" })), { type: "move", delta: 1 });
-  assert.deepEqual(getPopupNavigationAction(keyEvent({ key: "Tab", shiftKey: true })), { type: "move", delta: -1 });
+test("Tab and Shift+Tab keep native focus navigation", () => {
+  assert.equal(getPopupNavigationAction(keyEvent({ key: "Tab" })), null);
+  assert.equal(getPopupNavigationAction(keyEvent({ key: "Tab", shiftKey: true })), null);
 });
 
 test("popup navigation maps Ctrl or Command editor-style movement", () => {

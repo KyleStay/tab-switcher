@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildSearchText, fuzzyMatch, rankItems } from "../src/core/fuzzy.js";
+import { buildSearchText, fuzzyMatch, rankItems, formatUrl } from "../src/core/fuzzy.js";
 
 test("fuzzyMatch rewards word prefixes", () => {
   const prefix = fuzzyMatch("Visual Studio Code", "stu");
@@ -96,4 +96,11 @@ test("fuzzyMatch keeps surrogate-pair highlight ranges intact", () => {
   const match = fuzzyMatch("😀 Docs", "😀");
 
   assert.deepEqual(match.ranges, [[0, 2]]);
+});
+
+test("formatted URLs retain deep-link queries, ports, and fragments for search", () => {
+  const url = "https://example.test:8443/report?id=alpha#details";
+  const item = { title: "Report", url, displayUrl: formatUrl(url) };
+  assert.equal(item.displayUrl, "example.test:8443/report?id=alpha#details");
+  assert.equal(rankItems([item], "alpha details").length, 1);
 });

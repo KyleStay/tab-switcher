@@ -3,10 +3,6 @@ export function getPopupNavigationAction(event) {
 
   if (event.altKey) return null;
 
-  if (key === "tab" && !event.ctrlKey && !event.metaKey) {
-    return { type: "move", delta: event.shiftKey ? -1 : 1 };
-  }
-
   if (!event.ctrlKey && !event.metaKey && !event.shiftKey) {
     if (key === "arrowdown") return { type: "move", delta: 1 };
     if (key === "arrowup") return { type: "move", delta: -1 };

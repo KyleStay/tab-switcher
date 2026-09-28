@@ -16,7 +16,7 @@
       <section>
         <div>
           <h2>Shortcuts</h2>
-          <p class="shortcut-note">Use the open-switcher shortcut for fast launch, Tab, arrows, or Ctrl/Cmd+J/K inside the switcher, and MRU cycle commands for direct tab switching.</p>
+          <p class="shortcut-note">Use arrows or Ctrl/Cmd+J/K/N/P to select results. Tab moves between search and buttons. MRU shortcuts switch tabs directly.</p>
           <p class="shortcut-note">Chrome may reserve Ctrl+Tab, so confirm or remap shortcuts in Chrome's extension shortcut settings.</p>
           <p id="shortcutSummary">Loading shortcuts...</p>
         </div>
@@ -25,16 +25,15 @@
 
       <section class="settings-grid" aria-describedby="saveStatus">
         <label>
-          <span>Launch behavior</span>
+          <span class="setting-name">Launch behavior <button type="button" class="help-button" aria-label="Launch behavior help" data-help="Choose the extension popup or an in-page overlay with popup fallback.">?</button></span>
           <select name="launchMode" disabled>
             <option value="hybrid">Overlay with popup fallback</option>
-            <option value="overlay">Overlay only</option>
             <option value="popup">Popup only</option>
           </select>
         </label>
-        <p class="setting-help">Overlay opens fastest on normal webpages. Popup remains available for restricted Chrome pages.</p>
+        <p class="setting-help">Applies to the toolbar button and both launch shortcuts. Restricted pages and excluded sites use the popup.</p>
         <label class="stacked-field">
-          <span>Always use extension view on these sites</span>
+          <span class="setting-name">Always use extension view on these sites <button type="button" class="help-button" aria-label="Extension view sites help" data-help="Hosts listed here always use the extension popup instead of the in-page overlay. Enter one hostname or URL per line.">?</button></span>
           <textarea
             name="extensionViewHosts"
             rows="5"
@@ -45,19 +44,26 @@
         </label>
         <p class="setting-help">One host per line. Paste a full URL or hostname.</p>
         <label>
-          <span>Current window only</span>
+          <span class="setting-name">Popup current window only <button type="button" class="help-button" aria-label="Popup current window only help" data-help="Limit popup search results to tabs in the current browser window.">?</button></span>
           <input type="checkbox" name="currentWindowOnly" disabled>
         </label>
         <label>
-          <span>Include recently closed tabs</span>
+          <span class="setting-name">Most recent tab scope <button type="button" class="help-button" aria-label="Most recent tab scope help" data-help="Choose whether direct MRU cycle shortcuts move across all browser windows or stay inside the current window.">?</button></span>
+          <select name="mruCycleScope" disabled>
+            <option value="all-windows">Across all windows</option>
+            <option value="current-window">Current window only</option>
+          </select>
+        </label>
+        <label>
+          <span class="setting-name">Include recently closed tabs <button type="button" class="help-button" aria-label="Recently closed tabs help" data-help="Show recently closed tabs in the switcher so they can be restored.">?</button></span>
           <input type="checkbox" name="includeClosedTabs" disabled>
         </label>
         <label>
-          <span>Restore previous query</span>
+          <span class="setting-name">Restore previous query <button type="button" class="help-button" aria-label="Restore previous query help" data-help="Restore the last search during this browser session. Queries are not saved while private tab support is enabled.">?</button></span>
           <input type="checkbox" name="restorePreviousQuery" disabled>
         </label>
         <label>
-          <span>Theme</span>
+          <span class="setting-name">Theme <button type="button" class="help-button" aria-label="Theme help" data-help="Choose the switcher color theme, or follow your system appearance.">?</button></span>
           <select name="theme" disabled>
             <option value="system">System</option>
             <option value="dark">Dark</option>
@@ -65,35 +71,102 @@
           </select>
         </label>
         <label>
-          <span>Density</span>
+          <span class="setting-name">Density <button type="button" class="help-button" aria-label="Density help" data-help="Choose compact rows or roomier rows in the switcher.">?</button></span>
           <select name="density" disabled>
             <option value="compact">Compact</option>
             <option value="comfy">Comfy</option>
           </select>
         </label>
         <label>
-          <span>Maximum results</span>
-          <input type="number" name="maxResults" min="20" max="300" step="5" disabled>
-        </label>
-        <label>
-          <span>Automation expires after</span>
-          <input
-            type="number"
-            name="automationExpireMinutes"
-            min="1"
-            max="1440"
-            step="1"
-            inputmode="numeric"
-            aria-describedby="automationExpireHelp"
-            disabled
-          >
-        </label>
-        <p class="setting-help" id="automationExpireHelp">Duration in minutes for automation consumers to pick up.</p>
-        <label>
-          <span>Test keepalive prompt automation</span>
-          <input type="checkbox" name="testKeepalivePromptAutomation" disabled>
+          <span class="setting-name">Maximum results <button type="button" class="help-button" aria-label="Maximum results help" data-help="Maximum number of matching tabs and recently closed entries shown in the switcher.">?</button></span>
+          <span class="field-control">
+            <input type="number" name="maxResults" min="20" max="300" step="5" aria-label="Maximum results count" disabled>
+            <span class="unit-label">results</span>
+          </span>
         </label>
       </section>
+
+      <details class="private-settings">
+        <summary>Private tabs</summary>
+      <section class="settings-grid" aria-labelledby="privateTabsHeading">
+        <div class="settings-heading">
+          <h2 id="privateTabsHeading">Private tabs</h2>
+          <p id="privateTabsAccessMessage" class="setting-help">Checking private access...</p>
+        </div>
+        <label>
+          <span class="setting-name">Enable private tab support <button type="button" class="help-button" aria-label="Enable private tab support help" data-help="Allow Tab Switcher to show private/incognito tabs when Chrome grants this extension incognito access.">?</button></span>
+          <input type="checkbox" name="privateTabsEnabled" data-private-control="root" disabled>
+        </label>
+        <label>
+          <span class="setting-name">Display mode <button type="button" class="help-button" aria-label="Private tab display mode help" data-help="Choose whether private tabs are hidden, grouped under a Private tabs heading, or integrated with normal tab results.">?</button></span>
+          <select name="privateTabDisplayMode" data-private-control="dependent" disabled>
+            <option value="hidden">Hidden</option>
+            <option value="grouped">Grouped</option>
+            <option value="integrated">Integrated</option>
+          </select>
+        </label>
+        <label>
+          <span class="setting-name">Private indicator <button type="button" class="help-button" aria-label="Private indicator help" data-help="Choose how private tabs are visually marked in results.">?</button></span>
+          <select name="privateTabIndicator" data-private-control="dependent" disabled>
+            <option value="icon">Private window icon</option>
+            <option value="label">Private label</option>
+            <option value="icon-label">Icon and label</option>
+            <option value="none">No extra indicator</option>
+          </select>
+        </label>
+        <fieldset class="checkbox-group" data-private-control="dependent">
+          <legend><span class="setting-name">Obscure private fields <button type="button" class="help-button" aria-label="Obscure private fields help" data-help="Choose which private tab details are masked until the reveal behavior allows them to be shown.">?</button></span></legend>
+          <label>
+            <span>Title</span>
+            <input type="checkbox" name="privateMaskTitle" disabled>
+          </label>
+          <label>
+            <span>URL path and query</span>
+            <input type="checkbox" name="privateMaskUrl" disabled>
+          </label>
+          <label>
+            <span>Domain and full URL copying</span>
+            <input type="checkbox" name="privateMaskDomain" disabled>
+          </label>
+          <label>
+            <span>Favicon</span>
+            <input type="checkbox" name="privateMaskFavicon" disabled>
+          </label>
+        </fieldset>
+        <label>
+          <span class="setting-name">Reveal behavior <button type="button" class="help-button" aria-label="Reveal behavior help" data-help="Choose when masked private tab details become visible: never, selected row only, while open, for a timed duration, or manually.">?</button></span>
+          <select name="privateRevealMode" data-private-control="dependent" disabled>
+            <option value="never">Never reveal</option>
+            <option value="selected">Reveal selected item only</option>
+            <option value="session">Reveal while popup is open</option>
+            <option value="timed">Reveal for duration</option>
+            <option value="manual">Reveal until manually hidden again</option>
+          </select>
+        </label>
+        <label>
+          <span class="setting-name">Reveal duration <button type="button" class="help-button" aria-label="Reveal duration help" data-help="How long private tab details stay unmasked when reveal behavior is set to Reveal for duration. Unit: minutes.">?</button></span>
+          <span class="field-control">
+            <input
+              type="number"
+              name="privateRevealDurationMinutes"
+              min="1"
+              max="1440"
+              step="1"
+              inputmode="numeric"
+              aria-label="Private reveal duration minutes"
+              data-private-control="dependent"
+              disabled
+            >
+            <span class="unit-label">minutes</span>
+          </span>
+        </label>
+        <label>
+          <span class="setting-name">Search hidden private tab contents <button type="button" class="help-button" aria-label="Search hidden private tab contents help" data-help="Allow fuzzy search to match masked private tab titles and URLs. This can reveal that a hidden private page exists.">?</button></span>
+          <input type="checkbox" name="privateSearchHiddenContent" data-private-control="dependent" disabled>
+        </label>
+        <p class="setting-help">Searching hidden contents can reveal that a masked private page exists. Search queries are not saved while private tab support is enabled.</p>
+      </section>
+      </details>
 
       <div class="actions">
         <button type="button" id="resetSettings" disabled>Reset to defaults</button>

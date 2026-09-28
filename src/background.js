@@ -1,178 +1,118 @@
 import { DEFAULT_SETTINGS, STORAGE_KEYS, mergeSettings, normalizeHost } from "./core/defaults.js";
-import {
-  canUseOverlayOnTab,
-  createShowOverlayMessage,
-  shouldFallbackToPopup,
-  shouldTryOverlay
-} from "./core/messages.js";
-import {
-  createInitialState,
-  getCycleTarget,
-  listTabs,
-  removeTab,
-  touchTab,
-  updateTab,
-  tabKey,
-  wrapIndex
-} from "./core/mru.js";
+import { canUseOverlayOnTab, shouldTryOverlay } from "./core/messages.js";
+import { shouldIncludePrivateTabs } from "./core/private-tabs.js";
+import { createInitialState, listTabs, tabKey, wrapIndex } from "./core/mru.js";
 
-let mruState = { byKey: {}, order: [] };
-let settings = DEFAULT_SETTINGS;
-let readyPromise = hydrate();
-let cycleSession = null;
-
-const CYCLE_SESSION_MS = 1400;
 const POPUP_PATH = "src/switcher.html";
-const OVERLAY_SCRIPT = "src/content-switcher.js";
+const CYCLE_SESSION_MS = 1400;
+let settings = DEFAULT_SETTINGS;
+let cycleSession = null;
+let settingsQueue = Promise.resolve();
+let launchQueue = Promise.resolve();
+let cycleQueue = Promise.resolve();
+const readyPromise = hydrate();
 
-chrome.runtime.onInstalled.addListener(async ({ reason }) => {
-  await runSafely("install", async () => {
-    await readyPromise;
-    await refreshAllTabs();
-    if (reason === chrome.runtime.OnInstalledReason.INSTALL) {
-      await chrome.storage.local.set({ [STORAGE_KEYS.firstRunSeen]: false });
-    }
-  });
+async function hydrate() {
+  const stored = await chrome.storage.local.get(STORAGE_KEYS.settings);
+  settings = mergeSettings(stored[STORAGE_KEYS.settings]);
+  // Chrome owns tab recency. Do not persist a second copy of browsing data.
+  await chrome.storage.local.remove(STORAGE_KEYS.tabs);
+  await configureAction();
+}
+
+function configureAction() {
+  return chrome.action.setPopup({ popup: settings.launchMode === "popup" ? POPUP_PATH : "" });
+}
+
+chrome.commands.onCommand.addListener((command) => {
+  if (command === "open-switcher-alt-windows") queueLaunch();
+  if (command === "switch-previous-tab" || command === "switch-next-tab") {
+    cycleQueue = cycleQueue.then(async () => {
+      await readyPromise;
+      await cycleFrom(command === "switch-previous-tab" ? 1 : -1);
+    }).catch(reportError);
+  }
 });
 
-chrome.runtime.onStartup.addListener(() => {
-  readyPromise = hydrate();
-  runSafely("startup", async () => {
+chrome.action.onClicked.addListener(queueLaunch);
+
+function queueLaunch(tab) {
+  launchQueue = launchQueue.then(async () => {
     await readyPromise;
-    await refreshAllTabs();
-  });
+    await openSwitcher(tab || await getActiveTab());
+  }).catch(reportError);
+}
+
+function reportError(error) {
+  console.warn("Tab Switcher failed", error);
+}
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  chrome.storage.session.remove(overlayKey(tabId)).catch(reportError);
 });
 
-chrome.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
-  await runSafely("tab activation", async () => {
-    await readyPromise;
-    const tab = await chrome.tabs.get(tabId);
-    mruState = touchTab(mruState, { ...tab, windowId });
-    await persistTabs();
-  });
-});
-
-chrome.tabs.onUpdated.addListener(async (tabId, _changeInfo, tab) => {
-  await runSafely("tab update", async () => {
-    await readyPromise;
-    if (typeof tab.id !== "number" || typeof tab.windowId !== "number") return;
-    mruState = updateTab(mruState, tab);
-    await persistTabs();
-  });
-});
-
-chrome.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
-  await runSafely("tab removal", async () => {
-    await readyPromise;
-    mruState = removeTab(mruState, tabId, removeInfo.windowId);
-    await persistTabs();
-  });
-});
-
-chrome.tabs.onAttached.addListener(queueRefreshAllTabs);
-chrome.tabs.onDetached.addListener(queueRefreshAllTabs);
-chrome.tabs.onMoved.addListener(queueRefreshAllTabs);
-chrome.tabs.onReplaced.addListener(queueRefreshAllTabs);
-chrome.windows.onRemoved.addListener(queueRefreshAllTabs);
-
-chrome.commands.onCommand.addListener(async (command, tab) => {
-  await runSafely("command", async () => {
-    await readyPromise;
-    if (command === "_execute_action" || command === "open-switcher-alt-windows") {
-      await openSwitcher(tab, "command");
-      return;
-    }
-    if (command === "switch-previous-tab") {
-      await cycleFrom(tab, 1);
-    }
-    if (command === "switch-next-tab") {
-      await cycleFrom(tab, -1);
-    }
-  });
-});
-
-chrome.action.onClicked.addListener((tab) => {
-  runSafely("action click", async () => {
-    await readyPromise;
-    await openSwitcher(tab, "action");
-  });
-});
-
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  handleMessage(message).then(sendResponse).catch((error) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  handleMessage(message, sender).then(sendResponse).catch((error) => {
     sendResponse({ ok: false, error: error.message || String(error) });
   });
   return true;
 });
 
-async function hydrate() {
-  const stored = await chrome.storage.local.get([
-    STORAGE_KEYS.tabs,
-    STORAGE_KEYS.settings
-  ]);
-
-  mruState = stored[STORAGE_KEYS.tabs] || { byKey: {}, order: [] };
-  settings = mergeSettings(stored[STORAGE_KEYS.settings]);
+function overlayKey(tabId) {
+  return STORAGE_KEYS.overlayToken + ":" + tabId;
 }
 
-async function refreshAllTabs() {
-  const tabs = await chrome.tabs.query({});
-  const previous = mruState;
-  const fresh = createInitialState(tabs);
-
-  for (const [key, tab] of Object.entries(fresh.byKey)) {
-    if (previous.byKey[key]?.lastAccessed) {
-      fresh.byKey[key].lastAccessed = previous.byKey[key].lastAccessed;
+async function validateSender(message, sender) {
+  if (sender.id !== chrome.runtime.id) throw new Error("Unknown sender");
+  if (message?.type === "overlay-closed" && sender.tab && sender.frameId === 0) {
+    const key = overlayKey(sender.tab.id);
+    const stored = await chrome.storage.session.get(key);
+    if (stored[key] === message.token) await chrome.storage.session.remove(key);
+    return;
+  }
+  const url = new URL(sender.url || "about:blank");
+  const allowed = [chrome.runtime.getURL(POPUP_PATH), chrome.runtime.getURL("src/options.html")];
+  if (!allowed.includes(url.protocol + "//" + url.host + url.pathname)) throw new Error("Unknown view");
+  if (sender.frameId > 0) {
+    const stored = await chrome.storage.session.get(overlayKey(sender.tab?.id));
+    if (!message.token || stored[overlayKey(sender.tab?.id)] !== message.token || url.hash.slice(1) !== message.token) {
+      throw new Error("Open the switcher with its toolbar button or shortcut.");
     }
   }
-
-  const survivingOrder = previous.order.filter((key) => fresh.byKey[key]);
-  const newKeys = Object.keys(fresh.byKey).filter((key) => !survivingOrder.includes(key));
-  mruState = { byKey: fresh.byKey, order: [...survivingOrder, ...newKeys] };
-  await persistTabs();
 }
 
-async function queueRefreshAllTabs() {
-  await runSafely("tab refresh", async () => {
-    await readyPromise;
-    await refreshAllTabs();
-  });
-}
-
-async function persistTabs() {
-  await chrome.storage.local.set({ [STORAGE_KEYS.tabs]: mruState });
-}
-
-async function runSafely(scope, task) {
-  try {
-    await task();
-  } catch (error) {
-    console.warn(`Tab Switcher ${scope} failed`, error);
-  }
-}
-
-async function handleMessage(message) {
+async function handleMessage(message, sender) {
   await readyPromise;
-
+  await validateSender(message, sender);
   switch (message?.type) {
+    case "overlay-closed":
+      return { ok: true };
+    case "overlay-ready":
+    case "hide-overlay":
+      if (!sender.tab || sender.frameId <= 0) throw new Error("Not an overlay");
+      await chrome.tabs.sendMessage(sender.tab.id, { type: message.type, token: message.token }, { frameId: 0 });
+      return { ok: true };
     case "get-state":
-      return { ok: true, state: await getSwitcherState() };
+      return { ok: true, state: await getSwitcherState(sender) };
     case "get-closed-tabs":
-      return { ok: true, closedTabs: await getSwitcherClosedTabs() };
+      return { ok: true, closedTabs: await getClosedSessions(message.windowId) };
     case "activate-tab":
-      await activateTab(message.tab);
+      await activateTab(message.tab?.id);
       return { ok: true };
-    case "close-tab":
-      await chrome.tabs.remove(message.tab.id);
+    case "close-tab": {
+      const tab = await getAllowedTab(message.tab?.id);
+      await chrome.tabs.remove(tab.id);
       return { ok: true };
+    }
     case "restore-closed":
-      return { ok: true, restored: await restoreClosed(message.sessionId) };
+      if (typeof message.sessionId !== "string" || !message.sessionId) throw new Error("Missing closed tab session id");
+      await chrome.sessions.restore(message.sessionId);
+      return { ok: true };
     case "get-settings":
-      return { ok: true, settings, commands: await chrome.commands.getAll() };
+      return { ok: true, settings, commands: await chrome.commands.getAll(), privateTabsAccess: await getIncognitoAccess() };
     case "update-settings":
-      settings = mergeSettings({ ...settings, ...message.settings });
-      await chrome.storage.local.set({ [STORAGE_KEYS.settings]: settings });
-      return { ok: true, settings };
+      if (!message.settings || typeof message.settings !== "object" || Array.isArray(message.settings)) throw new Error("Invalid settings");
+      return updateSettings(message.settings);
     case "mark-first-run-seen":
       await chrome.storage.local.set({ [STORAGE_KEYS.firstRunSeen]: true });
       return { ok: true };
@@ -180,181 +120,146 @@ async function handleMessage(message) {
       await chrome.tabs.create({ url: "chrome://extensions/shortcuts" });
       return { ok: true };
     case "open-switcher-popup":
-      await openPopupFallback();
+      await openPopupFallback(sender.tab?.windowId);
       return { ok: true };
-    case "add-active-site-to-extension-view":
-      return { ok: true, ...(await addActiveSiteToExtensionView()) };
+    case "add-active-site-to-extension-view": {
+      const activeTab = await getActiveTab(sender);
+      if (!/^https?:\/\//i.test(activeTab?.url || "")) throw new Error("Current page cannot be added.");
+      const host = normalizeHost(activeTab.url);
+      const response = await updateSettings({ extensionViewHosts: [...settings.extensionViewHosts, host] });
+      return { ...response, host };
+    }
+    case "save-query":
+      if (typeof message.query !== "string") throw new Error("Invalid query");
+      if (!settings.restorePreviousQuery || settings.privateTabsEnabled || (await getActiveTab(sender))?.incognito) {
+        await chrome.storage.session.remove(STORAGE_KEYS.lastQuery);
+      } else {
+        await chrome.storage.session.set({ [STORAGE_KEYS.lastQuery]: message.query.slice(0, 4096) });
+      }
+      return { ok: true };
     default:
-      return { ok: false, error: "Unknown message type" };
+      throw new Error("Unknown message type");
   }
 }
 
-async function openSwitcher(tab, reason) {
-  const launchMode = settings.launchMode;
-
-  if (shouldTryOverlay(launchMode) && await openOverlay(tab, reason)) return;
-  if (shouldFallbackToPopup(launchMode)) {
-    await openPopupFallback(tab?.windowId);
-    return;
-  }
-
-  throw new Error("Tab Switcher overlay could not open on this page.");
+function updateSettings(patch) {
+  const task = settingsQueue.then(async () => {
+    const next = mergeSettings({ ...settings, ...patch });
+    await chrome.storage.local.set({ [STORAGE_KEYS.settings]: next });
+    settings = next;
+    await configureAction();
+    if (!settings.restorePreviousQuery || settings.privateTabsEnabled) await chrome.storage.session.remove(STORAGE_KEYS.lastQuery);
+    cycleSession = null;
+    return { ok: true, settings, privateTabsAccess: await getIncognitoAccess() };
+  });
+  settingsQueue = task.catch(() => {});
+  return task;
 }
 
-async function openOverlay(tab, reason) {
+async function openSwitcher(tab) {
+  if (shouldTryOverlay(settings.launchMode) && await openOverlay(tab)) return;
+  // Restricted pages and explicit site exclusions must still have a usable switcher.
+  await openPopupFallback(tab?.windowId);
+}
+
+async function openOverlay(tab) {
   if (!canUseOverlayOnTab(tab, settings)) return false;
-
+  const token = crypto.randomUUID();
+  const key = overlayKey(tab.id);
   try {
-    await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      files: [OVERLAY_SCRIPT]
-    });
-    await chrome.tabs.sendMessage(tab.id, createShowOverlayMessage({ reason }));
+    await chrome.storage.session.set({ [key]: token });
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["src/content-switcher.js"] });
+    const response = await chrome.tabs.sendMessage(tab.id, { type: "tab-switcher:show-overlay", token }, { frameId: 0 });
+    if (!response?.ok) throw new Error(response?.error || "Overlay did not open");
     return true;
   } catch (error) {
-    console.debug("Tab Switcher overlay launch failed", error);
+    await chrome.storage.session.remove(key);
+    await chrome.tabs.sendMessage(tab.id, { type: "hide-overlay", token }, { frameId: 0 }).catch(() => {});
+    console.debug("Tab Switcher overlay unavailable", error);
     return false;
   }
 }
 
-async function addActiveSiteToExtensionView() {
-  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  const host = normalizeHost(activeTab?.url);
-  if (!host || !/^https?:\/\//i.test(activeTab?.url || "")) {
-    throw new Error("Current page cannot be added.");
-  }
-
-  const nextHosts = [...new Set([...settings.extensionViewHosts, host])].sort();
-  settings = mergeSettings({ ...settings, extensionViewHosts: nextHosts });
-  await chrome.storage.local.set({ [STORAGE_KEYS.settings]: settings });
-  return { host, settings };
-}
-
 async function openPopupFallback(windowId) {
-  if (!chrome.action?.openPopup) {
-    await chrome.tabs.create({ url: chrome.runtime.getURL(POPUP_PATH) });
-    return;
-  }
-
-  await chrome.action.setPopup({ popup: POPUP_PATH });
   try {
+    await chrome.action.setPopup({ popup: POPUP_PATH });
     await chrome.action.openPopup(Number.isInteger(windowId) ? { windowId } : undefined);
+  } catch {
+    await chrome.tabs.create({ url: chrome.runtime.getURL(POPUP_PATH), ...(Number.isInteger(windowId) ? { windowId } : {}) });
   } finally {
-    globalThis.setTimeout(() => {
-      chrome.action.setPopup({ popup: "" }).catch((error) => {
-        console.debug("Tab Switcher popup reset failed", error);
-      });
-    }, 0);
+    await configureAction();
   }
 }
 
-async function getSwitcherState() {
-  const [activeTabs, firstRun] = await Promise.all([
-    chrome.tabs.query({ active: true, currentWindow: true }),
-    chrome.storage.local.get(STORAGE_KEYS.firstRunSeen)
-  ]);
-  const [activeTab] = activeTabs;
-  const currentWindowId = activeTab?.windowId ?? null;
-  const openTabs = listTabs(mruState, {
-    currentWindowId,
-    currentWindowOnly: settings.currentWindowOnly
-  });
+async function getActiveTab(sender = {}) {
+  if (sender.tab && sender.frameId > 0) return chrome.tabs.get(sender.tab.id);
+  return (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
+}
 
+async function getTabs() {
+  const [windows, hasIncognitoAccess] = await Promise.all([
+    chrome.windows.getAll({ populate: true, windowTypes: ["normal", "popup"] }), getIncognitoAccess()
+  ]);
+  const includePrivate = shouldIncludePrivateTabs({ hasIncognitoAccess, settings });
+  const tabs = windows.flatMap((window) => window.tabs || []).filter((tab) => !tab.incognito || includePrivate);
+  return { mru: createInitialState(tabs), hasIncognitoAccess, includePrivate };
+}
+
+async function getSwitcherState(sender) {
+  const [snapshot, activeTab, stored, session] = await Promise.all([
+    getTabs(), getActiveTab(sender), chrome.storage.local.get(STORAGE_KEYS.firstRunSeen), chrome.storage.session.get(STORAGE_KEYS.lastQuery)
+  ]);
   return {
-    activeTab,
-    tabs: openTabs,
-    closedTabs: [],
-    settings,
-    firstRunSeen: Boolean(firstRun[STORAGE_KEYS.firstRunSeen])
+    activeTab: activeTab?.incognito && !snapshot.includePrivate ? null : activeTab,
+    currentWindowId: activeTab?.windowId ?? null,
+    tabs: listTabs(snapshot.mru, { activeTab, currentWindowId: activeTab?.windowId ?? null, currentWindowOnly: settings.currentWindowOnly }),
+    closedTabs: [], settings,
+    privateTabsAccess: snapshot.hasIncognitoAccess,
+    firstRunSeen: Boolean(stored[STORAGE_KEYS.firstRunSeen]),
+    lastQuery: settings.restorePreviousQuery && !settings.privateTabsEnabled && !activeTab?.incognito ? session[STORAGE_KEYS.lastQuery] || "" : ""
   };
 }
 
-async function getSwitcherClosedTabs() {
+async function getClosedSessions(windowId) {
   if (!settings.includeClosedTabs) return [];
-
-  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  return getClosedSessions({
-    currentWindowId: activeTab?.windowId ?? null,
-    currentWindowOnly: settings.currentWindowOnly
-  });
+  if (settings.currentWindowOnly && !Number.isInteger(windowId)) return [];
+  return (await chrome.sessions.getRecentlyClosed({ maxResults: 25 }))
+    .filter((session) => session.tab && !session.tab.incognito)
+    .filter((session) => !settings.currentWindowOnly || session.tab.windowId === windowId)
+    .map((session) => ({ sessionId: session.tab.sessionId, closedAt: session.lastModified, tab: session.tab }));
 }
 
-async function getClosedSessions({ currentWindowId = null, currentWindowOnly = false } = {}) {
-  const sessions = await chrome.sessions.getRecentlyClosed({ maxResults: 25 });
-  return sessions
-    .filter((session) => session.tab)
-    .filter((session) => {
-      if (!currentWindowOnly || currentWindowId === null) return true;
-      return session.tab.windowId === currentWindowId;
-    })
-    .map((session) => ({
-      sessionId: session.tab.sessionId,
-      closedAt: session.lastModified,
-      tab: {
-        id: null,
-        windowId: session.tab.windowId ?? null,
-        index: session.tab.index ?? 0,
-        title: session.tab.title || "Recently closed tab",
-        url: session.tab.url || "",
-        favIconUrl: session.tab.favIconUrl || "",
-        incognito: Boolean(session.tab.incognito),
-        closed: true
-      }
-    }));
+async function getAllowedTab(id) {
+  if (!Number.isInteger(id) || id < 0) throw new Error("Invalid tab");
+  const tab = await chrome.tabs.get(id);
+  if (tab.incognito && !shouldIncludePrivateTabs({ hasIncognitoAccess: await getIncognitoAccess(), settings })) throw new Error("Private tabs are disabled");
+  return tab;
 }
 
-async function restoreClosed(sessionId) {
-  if (!sessionId) throw new Error("Missing closed tab session id");
-  return chrome.sessions.restore(sessionId);
-}
-
-async function activateTab(tab) {
-  if (!tab || typeof tab.id !== "number" || typeof tab.windowId !== "number") {
-    throw new Error("Invalid tab");
-  }
-
+async function activateTab(id) {
+  const tab = await getAllowedTab(id);
   await chrome.windows.update(tab.windowId, { focused: true });
   await chrome.tabs.update(tab.id, { active: true });
-  mruState = touchTab(mruState, tab);
-  await persistTabs();
 }
 
-async function cycleFrom(activeTab, direction) {
-  const tab = activeTab || (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
-  const options = {
-    currentWindowId: tab?.windowId ?? null,
-    currentWindowOnly: settings.currentWindowOnly
-  };
-  const tabs = listTabs(mruState, options);
-  const target = getCycleSessionTarget(tabs, tab, direction, options) || getCycleTarget(mruState, tab, direction, options);
-
-  if (target) await activateTab(target);
-}
-
-function getCycleSessionTarget(tabs, activeTab, direction, options) {
-  if (tabs.length < 2) return null;
-
-  const now = Date.now();
+async function cycleFrom(direction) {
+  const [snapshot, activeTab] = await Promise.all([getTabs(), getActiveTab()]);
+  const currentWindowId = settings.mruCycleScope === "current-window" ? activeTab?.windowId ?? null : null;
+  const tabs = listTabs(snapshot.mru, { currentWindowId, currentWindowOnly: settings.mruCycleScope === "current-window" });
+  if (tabs.length < 2) return;
   const activeKey = activeTab ? tabKey(activeTab) : null;
-  const sessionValid = cycleSession
-    && now - cycleSession.updatedAt < CYCLE_SESSION_MS
-    && cycleSession.currentWindowOnly === options.currentWindowOnly
-    && cycleSession.currentWindowId === options.currentWindowId;
-
-  if (!sessionValid) {
-    const activeIndex = tabs.findIndex((tab) => tabKey(tab) === activeKey);
-    cycleSession = {
-      keys: tabs.map(tabKey),
-      index: activeIndex >= 0 ? activeIndex : 0,
-      currentWindowId: options.currentWindowId,
-      currentWindowOnly: options.currentWindowOnly,
-      updatedAt: now
-    };
+  const now = Date.now();
+  const keys = tabs.map(tabKey);
+  if (!cycleSession || now - cycleSession.updatedAt >= CYCLE_SESSION_MS
+    || cycleSession.currentWindowId !== currentWindowId || cycleSession.keys[cycleSession.index] !== activeKey
+    || cycleSession.keys.length !== keys.length || cycleSession.keys.some((key) => !keys.includes(key))) {
+    cycleSession = { keys, index: Math.max(0, keys.indexOf(activeKey)), currentWindowId };
   }
-
-  cycleSession.index = wrapIndex(cycleSession.index + direction, cycleSession.keys.length);
+  cycleSession.index = wrapIndex(cycleSession.index + direction, keys.length);
   cycleSession.updatedAt = now;
+  await activateTab(tabs.find((tab) => tabKey(tab) === cycleSession.keys[cycleSession.index]).id);
+}
 
-  const targetKey = cycleSession.keys[cycleSession.index];
-  return tabs.find((candidate) => tabKey(candidate) === targetKey) || null;
+async function getIncognitoAccess() {
+  return chrome.extension.isAllowedIncognitoAccess();
 }

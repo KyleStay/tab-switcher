@@ -1,5 +1,14 @@
 const EXACT_THRESHOLD = 25;
 
+export function formatUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.host}${parsed.pathname === "/" ? "" : parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return url || "";
+  }
+}
+
 export function buildSearchText(item) {
   return buildSearchDocument(item).text;
 }

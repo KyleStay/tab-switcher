@@ -14,12 +14,11 @@ test("mergeSettings normalizes invalid enum and number values", () => {
     theme: "neon",
     density: "spacious",
     launchMode: "teleport",
-    maxResults: "999",
-    automationExpireMinutes: "-5"
+    mruCycleScope: "sideways",
+    maxResults: "999"
   }), {
     ...DEFAULT_SETTINGS,
-    maxResults: 300,
-    automationExpireMinutes: 1
+    maxResults: 300
   });
 });
 
@@ -28,9 +27,14 @@ test("mergeSettings preserves explicit false boolean values", () => {
 });
 
 test("mergeSettings preserves valid launch modes", () => {
-  assert.equal(mergeSettings({ launchMode: "overlay" }).launchMode, "overlay");
+  assert.equal(mergeSettings({ launchMode: "overlay" }).launchMode, "hybrid");
   assert.equal(mergeSettings({ launchMode: "popup" }).launchMode, "popup");
   assert.equal(mergeSettings({ launchMode: "hybrid" }).launchMode, "hybrid");
+});
+
+test("mergeSettings preserves valid MRU cycle scopes", () => {
+  assert.equal(mergeSettings({ mruCycleScope: "all-windows" }).mruCycleScope, "all-windows");
+  assert.equal(mergeSettings({ mruCycleScope: "current-window" }).mruCycleScope, "current-window");
 });
 
 test("mergeSettings normalizes extension view hosts", () => {
@@ -48,20 +52,38 @@ test("normalizeHostList deduplicates array values", () => {
 
 test("mergeSettings rejects non-boolean flag values", () => {
   assert.equal(mergeSettings({ includeClosedTabs: "false" }).includeClosedTabs, true);
-  assert.equal(
-    mergeSettings({ testKeepalivePromptAutomation: "true" }).testKeepalivePromptAutomation,
-    false
-  );
+  assert.equal(mergeSettings({ privateTabsEnabled: "true" }).privateTabsEnabled, false);
+  assert.equal(mergeSettings({ privateMaskTitle: "false" }).privateMaskTitle, true);
 });
 
 test("mergeSettings falls back for non-finite maxResults", () => {
   assert.equal(mergeSettings({ maxResults: Number.NaN }).maxResults, DEFAULT_SETTINGS.maxResults);
   assert.equal(
-    mergeSettings({ automationExpireMinutes: Number.NaN }).automationExpireMinutes,
-    DEFAULT_SETTINGS.automationExpireMinutes
+    mergeSettings({ privateRevealDurationMinutes: Number.NaN }).privateRevealDurationMinutes,
+    DEFAULT_SETTINGS.privateRevealDurationMinutes
   );
+});
+
+test("mergeSettings normalizes private tab settings", () => {
+  assert.deepEqual(mergeSettings({
+    privateTabsEnabled: true,
+    privateTabDisplayMode: "sideways",
+    privateTabIndicator: "sparkle",
+    privateRevealMode: "forever",
+    privateRevealDurationMinutes: 9999,
+    privateSearchHiddenContent: true
+  }), {
+    ...DEFAULT_SETTINGS,
+    privateTabsEnabled: true,
+    privateRevealDurationMinutes: 1440,
+    privateSearchHiddenContent: true
+  });
 });
 
 test("command labels cover every manifest command", () => {
   assert.deepEqual(Object.keys(COMMAND_LABELS).sort(), Object.keys(manifest.commands).sort());
+});
+
+test("malformed stored settings recover to defaults", () => {
+  for (const value of [null, false, 12, "bad", []]) assert.deepEqual(mergeSettings(value), DEFAULT_SETTINGS);
 });

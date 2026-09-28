@@ -1,11 +1,5 @@
 import { normalizeHostList } from "./defaults.js";
 
-export const MESSAGE_TYPES = {
-  showOverlay: "tab-switcher:show-overlay",
-  overlayReady: "tab-switcher:overlay-ready"
-};
-
-export const LAUNCH_MODES = ["hybrid", "overlay", "popup"];
 export const DEFAULT_EXTENSION_VIEW_HOSTS = [
   "airtable.com",
   "app.asana.com",
@@ -63,27 +57,12 @@ export const DEFAULT_EXTENSION_VIEW_HOSTS = [
 ];
 
 export function shouldTryOverlay(launchMode) {
-  return launchMode === "hybrid" || launchMode === "overlay";
-}
-
-export function shouldFallbackToPopup(launchMode) {
-  return launchMode === "hybrid" || launchMode === "popup";
+  return launchMode === "hybrid";
 }
 
 export function canUseOverlayOnTab(tab, settings = {}) {
-  if (!tab?.id || tab.status === "loading") return false;
+  if (!tab?.id || tab.incognito || tab.status === "loading") return false;
   return isInjectableUrl(tab.url) && !isShortcutHeavyAppUrl(tab.url, settings);
-}
-
-export function createShowOverlayMessage({ reason = "action" } = {}) {
-  return {
-    type: MESSAGE_TYPES.showOverlay,
-    reason
-  };
-}
-
-export function isShowOverlayMessage(message) {
-  return message?.type === MESSAGE_TYPES.showOverlay;
 }
 
 function isInjectableUrl(url = "") {

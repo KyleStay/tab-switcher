@@ -1,8 +1,17 @@
-import { STORAGE_KEYS } from "./core/defaults.js";
-import { buildSearchDocument, rankItems } from "./core/fuzzy.js";
+import { buildSearchDocument, rankItems, formatUrl } from "./core/fuzzy.js";
+import { tabKey, wrapIndex } from "./core/mru.js";
+import { normalizeHost } from "./core/defaults.js";
+import { DEFAULT_EXTENSION_VIEW_HOSTS } from "./core/messages.js";
+import {
+  clearPrivateTabState,
+  groupPrivateResults,
+  shouldIncludePrivateTabs,
+  toPrivateTabDisplayItem
+} from "./core/private-tabs.js";
 import { getPopupNavigationAction, shouldActivateSelectionOnSpace } from "./core/shortcuts.js";
 
-const QUERY_STORAGE_KEY = STORAGE_KEYS.lastQuery;
+const isOverlay = window !== window.top;
+const overlayToken = isOverlay ? location.hash.slice(1) : null;
 const isMac = navigator.platform.toLowerCase().includes("mac");
 
 const elements = {
@@ -18,7 +27,10 @@ const elements = {
   extensionViewButton: document.querySelector("#extensionViewButton"),
   cycleHint: document.querySelector("#cycleHint"),
   copyHint: document.querySelector("#copyHint"),
-  closeHint: document.querySelector("#closeHint")
+  closeHint: document.querySelector("#closeHint"),
+  revealHint: document.querySelector("#revealHint"),
+  popupButton: document.querySelector("#popupButton"),
+  retryButton: document.querySelector("#retryButton")
 };
 
 let state = null;
@@ -27,24 +39,31 @@ let ranked = [];
 let selectedIndex = 0;
 let renderedRows = [];
 let closedTabsRequestId = 0;
+let revealState = clearPrivateTabState();
+let privateTabsByKey = new Map();
+let revealTimer;
+let queryQueue = Promise.resolve();
 
+document.documentElement.dataset.overlay = String(isOverlay);
+document.documentElement.dataset.popup = String(chrome.extension.getViews({ type: "popup" }).includes(window));
+bindGlobalEvents();
+bindEvents();
 init();
 
 async function init() {
-  bindGlobalEvents();
-  bindEvents();
+  closedTabsRequestId += 1;
   renderLoading();
   elements.queryInput.focus();
 
   try {
     state = await send({ type: "get-state" }).then((response) => response.state);
     applySettings();
-    setQuery(state.settings.restorePreviousQuery ? sessionStorage.getItem(QUERY_STORAGE_KEY) || "" : "", {
-      preserveSelection: true
-    });
+    elements.queryInput.value = state.lastQuery || "";
     prepareItems();
     render();
     elements.queryInput.select();
+    if (isOverlay) await send({ type: "overlay-ready" });
+    schedulePrivateRedaction();
     loadClosedTabs();
   } catch (error) {
     renderError(error);
@@ -59,7 +78,23 @@ function bindGlobalEvents() {
         if (state) clearQuery();
         else elements.queryInput.value = "";
       }
-      else window.close();
+      else closeView();
+    }
+    if (isOverlay && event.key === "Tab") {
+      const controls = [...document.querySelectorAll("input, button")].filter((control) => !control.disabled && control.getClientRects().length);
+      const first = controls[0];
+      const last = controls.at(-1);
+      if (event.shiftKey && document.activeElement === first || !event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        (event.shiftKey ? last : first)?.focus();
+      }
+    }
+  });
+  window.addEventListener("pagehide", clearSensitiveState);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && state) {
+      prepareItems();
+      render({ preserveSelection: true });
     }
   });
 }
@@ -75,12 +110,21 @@ function bindEvents() {
   elements.queryInput.addEventListener("keydown", handleKeyDown);
   elements.results.addEventListener("mousemove", handlePointerMove);
   elements.results.addEventListener("click", handleClick);
-  elements.optionsButton.addEventListener("click", () => chrome.runtime.openOptionsPage());
+  elements.optionsButton.addEventListener("click", async () => {
+    try { await chrome.runtime.openOptionsPage(); await closeView(); } catch (error) { showActionError(error); }
+  });
   elements.extensionViewButton.addEventListener("click", addCurrentSiteToExtensionView);
-  elements.shortcutSettingsButton.addEventListener("click", () => send({ type: "open-shortcut-settings" }));
+  elements.shortcutSettingsButton.addEventListener("click", () => send({ type: "open-shortcut-settings" }).catch(showActionError));
   elements.dismissOnboardingButton.addEventListener("click", async () => {
-    elements.onboarding.hidden = true;
-    await send({ type: "mark-first-run-seen" });
+    try {
+      await send({ type: "mark-first-run-seen" });
+      elements.onboarding.hidden = true;
+    } catch (error) { showActionError(error); }
+  });
+  elements.retryButton.addEventListener("click", init);
+  elements.popupButton.hidden = !isOverlay;
+  elements.popupButton.addEventListener("click", async () => {
+    try { await send({ type: "open-switcher-popup" }); await closeView(); } catch (error) { showActionError(error); }
   });
 }
 
@@ -89,42 +133,75 @@ function applySettings() {
   document.documentElement.dataset.theme = state.settings.theme === "system" ? "" : state.settings.theme;
   elements.onboarding.hidden = state.firstRunSeen;
   const modifier = isMac ? "Cmd" : "Ctrl";
-  elements.cycleHint.textContent = `Tab, arrows, ${modifier}+J/K cycle`;
+  elements.cycleHint.textContent = `Arrows, ${modifier}+J/K or N/P cycle`;
   elements.copyHint.textContent = `${modifier}+C copy URL`;
+  elements.revealHint.textContent = `${modifier}+R reveal private`;
+  elements.revealHint.hidden = !state.settings.privateTabsEnabled || state.settings.privateRevealMode !== "manual";
   elements.closeHint.textContent = `${modifier}+W close tab`;
-  elements.extensionViewButton.hidden = !canAddActiveSite();
+  elements.extensionViewButton.hidden = state.settings.launchMode === "popup" || !canAddActiveSite();
 }
 
 function prepareItems() {
-  const duplicateTitles = getDuplicateTitles(state.tabs);
-  const windowIds = new Set(state.tabs.map((tab) => tab.windowId));
-  const openItems = state.tabs.map((tab, index) => createItem({
-    type: "tab",
-    displayUrl: formatUrl(tab.url),
-    duplicateOrdinal: duplicateTitles.get(tabKey(tab)),
-    recencyRank: index,
-    showWindow: windowIds.size > 1,
-    ...tab
-  }));
+  privateTabsByKey = new Map();
+  const privateAllowed = shouldIncludePrivateTabs({
+    hasIncognitoAccess: state.privateTabsAccess,
+    settings: state.settings
+  });
+  const normalTabs = state.tabs.filter((tab) => !tab.incognito);
+  const privateTabs = privateAllowed ? state.tabs.filter((tab) => tab.incognito) : [];
+  const visibleTabs = state.settings.privateTabDisplayMode === "integrated"
+    ? state.tabs.filter((tab) => !tab.incognito || privateAllowed)
+    : [...normalTabs, ...privateTabs];
+  const duplicateTitles = getDuplicateTitles(normalTabs);
+  const windowIds = new Set(visibleTabs.map((tab) => tab.windowId));
+  const openItems = visibleTabs.map((tab, index) => {
+    if (tab.incognito) {
+      const privateKey = tabKey(tab);
+      privateTabsByKey.set(privateKey, tab);
+      return createItem({
+        ...toPrivateTabDisplayItem({ tab, settings: state.settings, revealState, isSelected: false }),
+        privateKey,
+        recencyRank: index
+      });
+    }
+
+    return createItem({
+      type: "tab",
+      displayUrl: formatUrl(tab.url),
+      copyUrl: tab.url || "",
+      ariaLabel: [tab.title || "Untitled", formatUrl(tab.url)].filter(Boolean).join(", "),
+      duplicateOrdinal: duplicateTitles.get(tabKey(tab)),
+      recencyRank: index,
+      showWindow: windowIds.size > 1,
+      ...tab
+    });
+  });
   const closedItems = state.closedTabs.map((session, index) => createItem({
     type: "closed",
     sessionId: session.sessionId,
     displayUrl: formatUrl(session.tab.url),
+    copyUrl: session.tab.url || "",
+    ariaLabel: [session.tab.title || "Recently closed tab", formatUrl(session.tab.url)].filter(Boolean).join(", "),
     recencyRank: openItems.length + index,
     ...session.tab
   }));
   items = [...openItems, ...closedItems];
 }
 
-function render() {
+function render({ preserveSelection = false } = {}) {
   const query = elements.queryInput.value;
-  ranked = rankItems(items, query, { maxResults: state.settings.maxResults });
-  selectedIndex = getSelectedIndex(query);
+  const selectedKey = preserveSelection ? itemKey(ranked[selectedIndex]?.item) : null;
+  ranked = rankResults(items, query);
+  const preservedIndex = ranked.findIndex((result) => itemKey(result.item) === selectedKey);
+  selectedIndex = preserveSelection
+    ? preservedIndex >= 0 ? preservedIndex : clamp(selectedIndex, 0, Math.max(0, ranked.length - 1))
+    : getSelectedIndex(query);
 
   elements.resultSummary.textContent = summarizeResults(ranked, query);
   setResultsMessage("");
-  renderedRows = ranked.map(renderResult);
-  elements.results.replaceChildren(...renderedRows);
+  const entries = renderResultEntries(ranked);
+  elements.results.replaceChildren(...entries);
+  renderedRows = [...elements.results.querySelectorAll(".result")];
   elements.results.setAttribute("aria-busy", "false");
   elements.queryInput.setAttribute("aria-expanded", String(Boolean(ranked.length)));
 
@@ -136,8 +213,13 @@ function render() {
 function createItem(item) {
   return {
     ...item,
-    searchDocument: buildSearchDocument(item)
+    searchDocument: item.searchDocument || buildSearchDocument(item)
   };
+}
+
+function rankResults(sourceItems, query) {
+  const matches = rankItems(sourceItems, query, { maxResults: state.settings.maxResults });
+  return groupPrivateResults(matches, state.settings.privateTabDisplayMode).flatMap((group) => group.results);
 }
 
 async function loadClosedTabs() {
@@ -145,24 +227,55 @@ async function loadClosedTabs() {
   const requestId = ++closedTabsRequestId;
 
   try {
-    const response = await send({ type: "get-closed-tabs" });
-    if (requestId !== closedTabsRequestId) return;
+    const response = await send({ type: "get-closed-tabs", windowId: state.currentWindowId });
+    if (requestId !== closedTabsRequestId || !state) return;
     state.closedTabs = response.closedTabs;
     prepareItems();
-    render();
-  } catch {
-    // Closed tabs are progressive enrichment; open-tab switching should stay ready.
+    render({ preserveSelection: true });
+  } catch (error) {
+    if (requestId === closedTabsRequestId) showActionError(new Error("Recently closed tabs unavailable. " + error.message));
   }
 }
 
+function renderResultEntries(results) {
+  const entries = [];
+  const groups = groupPrivateResults(results, state.settings.privateTabDisplayMode);
+  let index = 0;
+
+  for (const group of groups) {
+    if (!group.results.length) continue;
+    const container = document.createElement("li");
+    container.role = "group";
+    container.setAttribute("aria-label", group.heading || "Tabs");
+    if (group.heading) container.append(renderSectionHeading(group.heading));
+    for (const result of group.results) {
+      container.append(renderResult(result, index));
+      index += 1;
+    }
+    entries.push(container);
+  }
+
+  return entries;
+}
+
+function renderSectionHeading(text) {
+  const heading = document.createElement("div");
+  heading.className = "result-section";
+  heading.role = "presentation";
+  heading.textContent = text;
+  return heading;
+}
+
 function renderResult(result, index) {
-  const item = result.item;
-  const row = document.createElement("li");
+  const item = displayItemForResult(result, index);
+  const row = document.createElement("div");
   row.id = resultId(index);
-  row.className = `result ${item.type === "closed" ? "closed" : ""} ${item.active ? "active-tab" : ""}`;
+  row.className = `result ${item.type === "closed" ? "closed" : ""} ${item.active ? "active-tab" : ""} ${item.private ? "private-tab" : ""}`;
   row.role = "option";
   row.dataset.index = String(index);
   row.ariaSelected = "false";
+  const actionLabel = item.type === "closed" ? "Restore" : item.active ? "Current" : "Switch";
+  row.setAttribute("aria-label", [item.ariaLabel, ...buildBadges(item), actionLabel].filter(Boolean).join(", "));
 
   const icon = renderIcon(item);
   const text = document.createElement("div");
@@ -175,22 +288,44 @@ function renderResult(result, index) {
 
   const titleText = item.title || "Untitled";
   const urlText = item.displayUrl || "No URL";
-  title.append(...highlight(titleText, result.fieldRanges?.title || []));
-  url.append(...highlight(urlText, result.fieldRanges?.url || []));
+  title.title = titleText;
+  url.title = urlText;
+  title.append(...highlight(titleText, item.private ? [] : result.fieldRanges?.title || []));
+  url.append(...highlight(urlText, item.private ? [] : result.fieldRanges?.url || []));
   text.append(title, url);
 
   const meta = document.createElement("div");
   meta.className = "row-meta";
+  const badges = document.createElement("span");
+  badges.className = "badges";
+  badges.append(...buildBadges(item).map(renderBadge));
   const action = document.createElement("span");
   action.className = "action";
-  action.textContent = item.type === "closed" ? "Restore" : item.active ? "Current" : "Switch";
-  meta.append(action, ...buildBadges(item).map(renderBadge));
+  action.textContent = actionLabel;
+  meta.append(badges, action);
 
   row.append(icon, text, meta);
   return row;
 }
 
+function displayItemForResult(result, index = selectedIndex) {
+  const item = result?.item;
+  if (!item?.private) return item;
+  const tab = privateTabsByKey.get(item.privateKey);
+  if (!tab) return item;
+  return {
+    ...item,
+    ...toPrivateTabDisplayItem({
+      tab,
+      settings: state.settings,
+      revealState,
+      isSelected: index === selectedIndex
+    })
+  };
+}
+
 function renderIcon(item) {
+  if (item.usePrivateFallbackIcon) return renderPrivateIcon();
   if (item.favIconUrl) {
     const image = document.createElement("img");
     image.className = "favicon";
@@ -200,6 +335,14 @@ function renderIcon(item) {
     return image;
   }
   return renderFallbackIcon(item);
+}
+
+function renderPrivateIcon() {
+  const fallback = document.createElement("span");
+  fallback.className = "fallback-icon private-icon";
+  fallback.setAttribute("aria-hidden", "true");
+  fallback.textContent = "P";
+  return fallback;
 }
 
 function renderFallbackIcon(item) {
@@ -224,7 +367,10 @@ function buildBadges(item) {
   if (item.duplicateOrdinal) badges.push(`#${item.duplicateOrdinal}`);
   if (item.pinned) badges.push("Pinned");
   if (item.audible) badges.push(item.muted ? "Muted" : "Audio");
-  if (item.incognito) badges.push("Incognito");
+  if (item.private) {
+    if (item.privateIndicator === "icon" || item.privateIndicator === "icon-label") badges.push("Private window");
+    if (item.privateIndicator === "label" || item.privateIndicator === "icon-label") badges.push("Private");
+  } else if (item.incognito) badges.push("Incognito");
   return badges;
 }
 
@@ -244,6 +390,7 @@ function highlight(text, ranges) {
 }
 
 async function handleKeyDown(event) {
+  if (event.isComposing || !state) return;
   const navigationAction = getPopupNavigationAction(event);
   if (navigationAction) {
     event.preventDefault();
@@ -258,6 +405,9 @@ async function handleKeyDown(event) {
     if (hasInputSelection()) return;
     event.preventDefault();
     await copySelectedUrl();
+  } else if (isCtrlChord(event, ["r"]) && state?.settings.privateRevealMode === "manual") {
+    event.preventDefault();
+    toggleManualPrivateReveal();
   }
 }
 
@@ -292,8 +442,19 @@ function moveSelection(delta) {
 
 function setSelection(index) {
   if (!ranked.length) return;
+  const previousIndex = selectedIndex;
   selectedIndex = clamp(index, 0, ranked.length - 1);
-  updateSelection();
+  if (state?.settings.privateRevealMode === "selected" && previousIndex !== selectedIndex
+    && (ranked[previousIndex]?.item.private || ranked[selectedIndex]?.item.private)) {
+    for (const changedIndex of [previousIndex, selectedIndex]) {
+      const row = renderResult(ranked[changedIndex], changedIndex);
+      renderedRows[changedIndex].replaceWith(row);
+      renderedRows[changedIndex] = row;
+    }
+    updateSelection();
+  } else {
+    updateSelection();
+  }
 }
 
 function updateSelection() {
@@ -318,9 +479,9 @@ async function activateSelected() {
     } else {
       await send({ type: "activate-tab", tab: selected });
     }
-    window.close();
+    await closeView();
   } catch (error) {
-    renderError(error);
+    showActionError(error);
   }
 }
 
@@ -329,21 +490,41 @@ async function closeSelected() {
   if (!selected || selected.type === "closed") return;
 
   try {
+    closedTabsRequestId += 1;
     await send({ type: "close-tab", tab: selected });
     state = await send({ type: "get-state" }).then((response) => response.state);
     prepareItems();
-    render();
+    render({ preserveSelection: true });
     loadClosedTabs();
   } catch (error) {
-    renderError(error);
+    showActionError(error);
   }
 }
 
 async function copySelectedUrl() {
-  const selected = ranked[selectedIndex]?.item;
-  if (!selected?.url) return;
-  await navigator.clipboard.writeText(selected.url);
-  elements.resultSummary.textContent = "Copied URL";
+  const selected = displayItemForResult(ranked[selectedIndex]);
+  if (!selected?.copyUrl) {
+    elements.resultSummary.textContent = selected?.private
+      ? "Private URL hidden. Reveal to copy."
+      : "No URL to copy";
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(selected.copyUrl);
+    elements.resultSummary.textContent = "Copied URL";
+  } catch (error) { showActionError(error); }
+}
+
+function toggleManualPrivateReveal() {
+  revealState = {
+    ...revealState,
+    manuallyRevealed: !revealState.manuallyRevealed
+  };
+  prepareItems();
+  render({ preserveSelection: true });
+  elements.resultSummary.textContent = revealState.manuallyRevealed
+    ? "Private tabs revealed while this switcher is open"
+    : "Private tabs hidden";
 }
 
 async function addCurrentSiteToExtensionView() {
@@ -353,7 +534,7 @@ async function addCurrentSiteToExtensionView() {
     elements.extensionViewButton.hidden = true;
     elements.resultSummary.textContent = `Using popup for ${response.host}`;
   } catch (error) {
-    renderError(error);
+    showActionError(error);
   }
 }
 
@@ -361,8 +542,8 @@ function canAddActiveSite() {
   const url = state?.activeTab?.url || "";
   if (!/^https?:\/\//i.test(url)) return false;
   try {
-    const host = new URL(url).hostname.replace(/^www\./, "");
-    return !state.settings.extensionViewHosts.includes(host);
+    const host = normalizeHost(url);
+    return ![...DEFAULT_EXTENSION_VIEW_HOSTS, ...state.settings.extensionViewHosts].some((entry) => host === entry || host.endsWith(`.${entry}`));
   } catch {
     return false;
   }
@@ -380,16 +561,18 @@ function clearQuery() {
 }
 
 function persistQuery() {
-  if (!state?.settings.restorePreviousQuery) return;
   const query = elements.queryInput.value;
-  if (query) sessionStorage.setItem(QUERY_STORAGE_KEY, query);
-  else sessionStorage.removeItem(QUERY_STORAGE_KEY);
+  queryQueue = queryQueue.then(() => send({ type: "save-query", query })).catch(showActionError);
 }
 
 function getSelectedIndex(query) {
   if (!ranked.length) return 0;
   if (query.trim()) return clamp(selectedIndex, 0, ranked.length - 1);
-  const previousIndex = ranked.findIndex((result) => result.item.type === "tab" && !result.item.active);
+  const activeKey = state.activeTab ? tabKey(state.activeTab) : null;
+  const previousIndex = ranked.findIndex((result) => {
+    const item = result.item;
+    return item.type === "tab" && (!activeKey || tabKey(item) !== activeKey);
+  });
   return previousIndex >= 0 ? previousIndex : 0;
 }
 
@@ -406,6 +589,8 @@ function summarizeResults(results, query) {
 }
 
 function renderLoading() {
+  elements.retryButton.hidden = true;
+  elements.resultSummary.textContent = "Loading tabs...";
   elements.results.replaceChildren();
   elements.results.setAttribute("aria-busy", "true");
   elements.queryInput.setAttribute("aria-expanded", "false");
@@ -417,7 +602,8 @@ function renderEmpty(query) {
 }
 
 function renderError(error) {
-  elements.resultSummary.textContent = "Could not load tabs";
+  elements.resultSummary.textContent = error?.message || "Could not load tabs";
+  elements.retryButton.hidden = false;
   elements.results.replaceChildren();
   elements.results.setAttribute("aria-busy", "false");
   elements.queryInput.setAttribute("aria-expanded", "false");
@@ -429,15 +615,6 @@ function setResultsMessage(message, isError = false) {
   elements.resultsMessage.textContent = message;
   elements.resultsMessage.hidden = !message;
   elements.resultsMessage.classList.toggle("error", isError);
-}
-
-function formatUrl(url) {
-  try {
-    const parsed = new URL(url);
-    return `${parsed.hostname}${parsed.pathname === "/" ? "" : parsed.pathname}`;
-  } catch {
-    return url || "No URL";
-  }
 }
 
 function getDuplicateTitles(tabs) {
@@ -458,10 +635,6 @@ function getDuplicateTitles(tabs) {
   return duplicates;
 }
 
-function tabKey(tab) {
-  return `${tab.windowId}:${tab.id}`;
-}
-
 function isCtrlChord(event, keys) {
   return (event.ctrlKey || event.metaKey)
     && !event.altKey
@@ -477,17 +650,48 @@ function resultId(index) {
   return `result-${index}`;
 }
 
-function wrapIndex(index, length) {
-  if (length <= 0) return 0;
-  return ((index % length) + length) % length;
-}
-
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
 async function send(message) {
-  const response = await chrome.runtime.sendMessage(message);
+  const response = await chrome.runtime.sendMessage({ ...message, token: overlayToken });
   if (!response?.ok) throw new Error(response?.error || "Extension message failed");
   return response;
+}
+
+function itemKey(item) {
+  return item ? item.type === "closed" ? `closed:${item.sessionId}` : tabKey(item) : null;
+}
+
+function schedulePrivateRedaction() {
+  clearTimeout(revealTimer);
+  if (state.settings.privateRevealMode !== "timed") return;
+  const delay = revealState.openedAt + state.settings.privateRevealDurationMinutes * 60_000 - Date.now();
+  revealTimer = setTimeout(() => {
+    if (!state) return;
+    prepareItems();
+    render({ preserveSelection: true });
+  }, Math.max(0, delay));
+}
+
+function showActionError(error) {
+  elements.resultSummary.textContent = error?.message || "Action failed";
+  elements.retryButton.hidden = false;
+}
+
+function clearSensitiveState() {
+  clearTimeout(revealTimer);
+  closedTabsRequestId += 1;
+  state = null;
+  items = ranked = renderedRows = [];
+  privateTabsByKey.clear();
+  elements.results.replaceChildren();
+  elements.queryInput.value = "";
+}
+
+async function closeView() {
+  if (isOverlay) await send({ type: "hide-overlay" });
+  else window.close();
+  clearSensitiveState();
 }
