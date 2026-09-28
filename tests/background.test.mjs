@@ -5,12 +5,13 @@ import { DEFAULT_SETTINGS, STORAGE_KEYS } from "../src/core/defaults.js";
 let generation = 0;
 async function boot(storedSettings = null) {
   const listeners = {};
-  const calls = { popup: [], writes: [], created: [], activated: [], windows: 0 };
+  const calls = { popup: [], writes: [], created: [], activated: [], windows: [] };
   const tabs = [
     { id: 1, windowId: 1, index: 0, active: true, title: "Current", url: "https://example.test/", lastAccessed: 300 },
     { id: 2, windowId: 1, index: 1, title: "Previous", url: "https://example.test/2", lastAccessed: 200 },
     { id: 3, windowId: 1, index: 2, title: "Older", url: "https://example.test/3", lastAccessed: 100 },
-    { id: 4, windowId: 2, index: 0, incognito: true, title: "Secret", url: "https://secret.test/", lastAccessed: 250 }
+    { id: 4, windowId: 2, index: 0, incognito: true, title: "Secret", url: "https://secret.test/", lastAccessed: 250 },
+    { id: 5, windowId: 3, index: 0, title: "Popup window", url: "https://popup.test/", lastAccessed: 50 }
   ];
   const local = { [STORAGE_KEYS.settings]: storedSettings, [STORAGE_KEYS.tabs]: { corrupt: true } };
   const session = {};
@@ -33,7 +34,14 @@ async function boot(storedSettings = null) {
     storage: { local: storage(local), session: storage(session) },
     scripting: { executeScript: async () => {} },
     windows: {
-      getAll: async () => { calls.windows++; return [{ id: 1, tabs: tabs.filter((tab) => tab.windowId === 1) }, { id: 2, tabs: tabs.filter((tab) => tab.windowId === 2) }]; },
+      getAll: async (options) => {
+        calls.windows.push(options);
+        return [
+          { id: 1, type: "normal", tabs: tabs.filter((tab) => tab.windowId === 1) },
+          { id: 2, type: "normal", tabs: tabs.filter((tab) => tab.windowId === 2) },
+          { id: 3, type: "popup", tabs: tabs.filter((tab) => tab.windowId === 3) }
+        ];
+      },
       update: async () => {}
     },
     tabs: {
@@ -63,13 +71,13 @@ test("background reads one live snapshot, recovers settings, and removes obsolet
   const response = await app.send({ type: "get-state" });
   assert.equal(response.ok, true);
   assert.deepEqual(response.state.settings, DEFAULT_SETTINGS);
-  assert.deepEqual(response.state.tabs.map((tab) => tab.id), [1, 2, 3]);
-  assert.equal(app.calls.windows, 1);
+  assert.deepEqual(response.state.tabs.map((tab) => tab.id), [1, 2, 3, 5]);
+  assert.deepEqual(app.calls.windows, [{ populate: true, windowTypes: ["normal", "popup"] }]);
   assert.equal(app.local[STORAGE_KEYS.tabs], undefined);
   assert.deepEqual(app.calls.writes, []);
   app.tabs[2].lastAccessed = 400;
   const next = await app.send({ type: "get-state" });
-  assert.deepEqual(next.state.tabs.map((tab) => tab.id), [1, 3, 2]);
+  assert.deepEqual(next.state.tabs.map((tab) => tab.id), [1, 3, 2, 5]);
 });
 
 test("private data and actions require opt-in; iframe requests require the session token", async () => {

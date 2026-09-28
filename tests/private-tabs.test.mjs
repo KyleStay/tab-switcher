@@ -73,6 +73,26 @@ test("selected reveal exposes fields only for the selected display item", () => 
   assert.doesNotMatch(item.searchDocument.text, /roadmap|private\.example/i);
 });
 
+test("visible private fields remain searchable without exposing masked content", () => {
+  const titleVisible = toPrivateTabDisplayItem({
+    tab: privateTab,
+    settings: { ...privateSettings, privateMaskTitle: false },
+    revealState: { openedAt: 1000 },
+    now: 1000
+  });
+  assert.match(titleVisible.searchDocument.text, /Secret Roadmap/);
+  assert.doesNotMatch(titleVisible.searchDocument.text, /private\.example/i);
+
+  const urlVisible = toPrivateTabDisplayItem({
+    tab: privateTab,
+    settings: { ...privateSettings, privateMaskUrl: false, privateMaskDomain: false },
+    revealState: { openedAt: 1000 },
+    now: 1000
+  });
+  assert.match(urlVisible.searchDocument.text, /private\.example\.test\/plan/);
+  assert.doesNotMatch(urlVisible.searchDocument.text, /Secret Roadmap/);
+});
+
 test("search hidden private contents is explicit", () => {
   const item = toPrivateTabDisplayItem({
     tab: privateTab,

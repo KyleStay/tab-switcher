@@ -46,7 +46,13 @@ export function toPrivateTabDisplayItem({ tab, settings, revealState = {}, isSel
   const searchHiddenContent = Boolean(settings.privateSearchHiddenContent);
   const searchItem = searchHiddenContent
     ? { title: rawTitle, displayUrl: formatUrl(rawUrl), url: rawUrl }
-    : { title: `${PRIVATE_GENERIC_TITLE} private incognito`, displayUrl: PRIVATE_HIDDEN_URL, url: "" };
+    : {
+      title: `${PRIVATE_GENERIC_TITLE} private incognito ${settings.privateMaskTitle ? "" : rawTitle}`,
+      displayUrl: settings.privateMaskUrl
+        ? settings.privateMaskDomain ? PRIVATE_HIDDEN_URL : rawDomain
+        : settings.privateMaskDomain ? formatUrl(rawUrl).replace(rawDomain, "Hidden domain") : formatUrl(rawUrl),
+      url: ""
+    };
   const accessibleBits = [
     "Private tab",
     settings.privateMaskTitle && !revealed ? "hidden title" : visibleTitle,

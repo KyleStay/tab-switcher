@@ -198,7 +198,7 @@ async function getActiveTab(sender = {}) {
 
 async function getTabs() {
   const [windows, hasIncognitoAccess] = await Promise.all([
-    chrome.windows.getAll({ populate: true, windowTypes: ["normal"] }), getIncognitoAccess()
+    chrome.windows.getAll({ populate: true, windowTypes: ["normal", "popup"] }), getIncognitoAccess()
   ]);
   const includePrivate = shouldIncludePrivateTabs({ hasIncognitoAccess, settings });
   const tabs = windows.flatMap((window) => window.tabs || []).filter((tab) => !tab.incognito || includePrivate);
