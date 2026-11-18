@@ -17,6 +17,7 @@ const isMac = navigator.platform.toLowerCase().includes("mac");
 const elements = {
   shell: document.querySelector(".shell"),
   onboarding: document.querySelector("#onboarding"),
+  onboardingShortcut: document.querySelector("#onboardingShortcut"),
   dismissOnboardingButton: document.querySelector("#dismissOnboardingButton"),
   shortcutSettingsButton: document.querySelector("#shortcutSettingsButton"),
   optionsButton: document.querySelector("#optionsButton"),
@@ -25,10 +26,12 @@ const elements = {
   results: document.querySelector("#results"),
   resultsMessage: document.querySelector("#resultsMessage"),
   extensionViewButton: document.querySelector("#extensionViewButton"),
-  cycleHint: document.querySelector("#cycleHint"),
+  enterHint: document.querySelector("#enterHint"),
+  escapeHint: document.querySelector("#escapeHint"),
   copyHint: document.querySelector("#copyHint"),
   closeHint: document.querySelector("#closeHint"),
   revealHint: document.querySelector("#revealHint"),
+  revealKey: document.querySelector("#revealKey"),
   popupButton: document.querySelector("#popupButton"),
   retryButton: document.querySelector("#retryButton")
 };
@@ -118,7 +121,9 @@ function bindEvents() {
   elements.dismissOnboardingButton.addEventListener("click", async () => {
     try {
       await send({ type: "mark-first-run-seen" });
+      if (state) state.firstRunSeen = true;
       elements.onboarding.hidden = true;
+      elements.queryInput.focus();
     } catch (error) { showActionError(error); }
   });
   elements.retryButton.addEventListener("click", init);
@@ -133,11 +138,16 @@ function applySettings() {
   document.documentElement.dataset.theme = state.settings.theme === "system" ? "" : state.settings.theme;
   elements.onboarding.hidden = state.firstRunSeen;
   const modifier = isMac ? "Cmd" : "Ctrl";
-  elements.cycleHint.textContent = `Arrows, ${modifier}+J/K or N/P cycle`;
-  elements.copyHint.textContent = `${modifier}+C copy URL`;
-  elements.revealHint.textContent = `${modifier}+R reveal private`;
+  if (!state.firstRunSeen) {
+    const assigned = state.launchShortcuts || [];
+    elements.onboardingShortcut.textContent = assigned.length
+      ? `Open the switcher with ${assigned.join(" or ")}.`
+      : "Set a keyboard shortcut in Chrome.";
+  }
+  elements.copyHint.textContent = `${modifier}+C`;
+  elements.revealKey.textContent = `${modifier}+R`;
   elements.revealHint.hidden = !state.settings.privateTabsEnabled || state.settings.privateRevealMode !== "manual";
-  elements.closeHint.textContent = `${modifier}+W close tab`;
+  elements.closeHint.textContent = `${modifier}+W`;
   elements.extensionViewButton.hidden = state.settings.launchMode === "popup" || !canAddActiveSite();
 }
 
@@ -270,12 +280,13 @@ function renderResult(result, index) {
   const item = displayItemForResult(result, index);
   const row = document.createElement("div");
   row.id = resultId(index);
-  row.className = `result ${item.type === "closed" ? "closed" : ""} ${item.active ? "active-tab" : ""} ${item.private ? "private-tab" : ""}`;
+  row.className = `result ${item.type === "closed" ? "closed" : ""} ${item.private ? "private-tab" : ""}`;
   row.role = "option";
   row.dataset.index = String(index);
   row.ariaSelected = "false";
-  const actionLabel = item.type === "closed" ? "Restore" : item.active ? "Current" : "Switch";
-  row.setAttribute("aria-label", [item.ariaLabel, ...buildBadges(item), actionLabel].filter(Boolean).join(", "));
+  const actionLabel = item.type === "closed" ? "Restore" : "Switch";
+  const badgesForItem = buildBadges(item);
+  row.setAttribute("aria-label", [item.ariaLabel, ...badgesForItem, actionLabel].filter(Boolean).join(", "));
 
   const icon = renderIcon(item);
   const text = document.createElement("div");
@@ -298,7 +309,8 @@ function renderResult(result, index) {
   meta.className = "row-meta";
   const badges = document.createElement("span");
   badges.className = "badges";
-  badges.append(...buildBadges(item).map(renderBadge));
+  badges.hidden = !badgesForItem.length;
+  badges.append(...badgesForItem.map(renderBadge));
   const action = document.createElement("span");
   action.className = "action";
   action.textContent = actionLabel;
@@ -326,11 +338,14 @@ function displayItemForResult(result, index = selectedIndex) {
 
 function renderIcon(item) {
   if (item.usePrivateFallbackIcon) return renderPrivateIcon();
-  if (item.favIconUrl) {
+  if (item.favIconUrl && item.url && /^https?:\/\//i.test(item.url)) {
+    const url = new URL(chrome.runtime.getURL("/_favicon/"));
+    url.searchParams.set("pageUrl", item.url);
+    url.searchParams.set("size", "32");
     const image = document.createElement("img");
     image.className = "favicon";
     image.alt = "";
-    image.src = item.favIconUrl;
+    image.src = url.href;
     image.addEventListener("error", () => image.replaceWith(renderFallbackIcon(item)));
     return image;
   }
@@ -349,7 +364,7 @@ function renderFallbackIcon(item) {
   const fallback = document.createElement("span");
   fallback.className = "fallback-icon";
   fallback.setAttribute("aria-hidden", "true");
-  fallback.textContent = item.type === "closed" ? "R" : "T";
+  fallback.textContent = item.type === "closed" ? "↶" : item.private ? "P" : (item.displayUrl || item.title || "T").charAt(0).toUpperCase();
   return fallback;
 }
 
@@ -362,6 +377,7 @@ function renderBadge(label) {
 
 function buildBadges(item) {
   const badges = [];
+  if (state.activeTab && item.type === "tab" && tabKey(item) === tabKey(state.activeTab)) badges.push("Current");
   if (item.type === "closed") badges.push("Recently closed");
   else if (item.showWindow) badges.push(`Window ${item.windowId}`);
   if (item.duplicateOrdinal) badges.push(`#${item.duplicateOrdinal}`);
@@ -458,6 +474,12 @@ function setSelection(index) {
 }
 
 function updateSelection() {
+  const selected = ranked[selectedIndex]?.item;
+  elements.enterHint.textContent = selected?.type === "closed" ? "Restore" : "Switch";
+  elements.enterHint.parentElement.hidden = !selected;
+  elements.escapeHint.textContent = elements.queryInput.value ? "Clear search" : "Dismiss";
+  elements.copyHint.parentElement.hidden = !selected;
+  elements.closeHint.parentElement.hidden = !selected || selected.type === "closed";
   for (const row of renderedRows) row.ariaSelected = "false";
   const selectedRow = renderedRows[selectedIndex];
   if (!selectedRow) {
@@ -561,6 +583,7 @@ function clearQuery() {
 }
 
 function persistQuery() {
+  if (!state.settings.restorePreviousQuery || state.settings.privateTabsEnabled) return;
   const query = elements.queryInput.value;
   queryQueue = queryQueue.then(() => send({ type: "save-query", query })).catch(showActionError);
 }
@@ -582,27 +605,27 @@ function summarizeResults(results, query) {
   const closedCount = results.length - openCount;
   if (!query.trim()) {
     return closedCount
-      ? `${openCount} recent open, ${closedCount} recently closed`
-      : `${openCount} recent ${openCount === 1 ? "tab" : "tabs"}`;
+      ? `${openCount} open · ${closedCount} recently closed`
+      : `${openCount} open ${openCount === 1 ? "tab" : "tabs"}`;
   }
   return `${results.length} ${results.length === 1 ? "match" : "matches"}`;
 }
 
 function renderLoading() {
   elements.retryButton.hidden = true;
-  elements.resultSummary.textContent = "Loading tabs...";
+  elements.resultSummary.textContent = "Loading tabs…";
   elements.results.replaceChildren();
   elements.results.setAttribute("aria-busy", "true");
   elements.queryInput.setAttribute("aria-expanded", "false");
-  setResultsMessage("Loading tabs...");
+  setResultsMessage("");
 }
 
 function renderEmpty(query) {
-  setResultsMessage(query.trim() ? "No matching tabs" : "No tabs available yet");
+  setResultsMessage(query.trim() ? "Try a different title or URL." : "");
 }
 
 function renderError(error) {
-  elements.resultSummary.textContent = error?.message || "Could not load tabs";
+  elements.resultSummary.textContent = "Could not load tabs";
   elements.retryButton.hidden = false;
   elements.results.replaceChildren();
   elements.results.setAttribute("aria-busy", "false");

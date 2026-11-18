@@ -171,29 +171,44 @@ input:focus-visible {
 }
 
 .search {
-  display: grid;
-  grid-template-columns: 24px 1fr;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 14px 8px;
+  position: relative;
+  display: block;
+  margin: 14px 14px 8px;
 }
 
-.prompt {
-  color: var(--accent);
-  font-size: 24px;
-  line-height: 1;
-  text-align: center;
+.search-icon {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  width: 12px;
+  height: 12px;
+  color: var(--muted);
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.search-icon::after {
+  content: "";
+  position: absolute;
+  width: 6px;
+  height: 1.5px;
+  background: currentColor;
+  top: 9px;
+  left: 8px;
+  transform: rotate(45deg);
+  transform-origin: left;
 }
 
 #queryInput {
   width: 100%;
-  height: 40px;
+  height: 46px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 9px;
   outline: none;
   background: var(--bg);
   color: var(--text);
-  padding: 0 12px;
+  padding: 0 12px 0 40px;
   font-size: 15px;
 }
 
@@ -208,7 +223,7 @@ input:focus-visible {
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-  padding: 0 14px 8px 46px;
+  padding: 0 14px 8px;
   color: var(--muted);
   font-size: 12px;
 }
@@ -226,7 +241,7 @@ input:focus-visible {
 
 .meta-actions {
   display: flex;
-  flex: 0 0 auto;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -253,6 +268,7 @@ input:focus-visible {
   border-radius: 6px;
   border: 1px solid transparent;
   position: relative;
+  cursor: pointer;
 }
 
 .result-section {
@@ -271,7 +287,7 @@ input:focus-visible {
 
 .result[aria-selected="true"] {
   background: var(--accent-soft);
-  border-color: rgba(78, 161, 255, 0.38);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 .result[aria-selected="true"]::before {
@@ -283,10 +299,6 @@ input:focus-visible {
   width: 3px;
   border-radius: 999px;
   background: var(--accent);
-}
-
-.active-tab .title {
-  color: var(--muted);
 }
 
 .favicon {
@@ -314,7 +326,8 @@ input:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 550;
   line-height: 1.35;
 }
 
@@ -334,22 +347,23 @@ mark {
 }
 
 .row-meta {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 52px;
+  display: flex;
   gap: 8px;
   align-items: center;
   justify-self: end;
-  width: min(220px, 30vw);
-  min-width: 156px;
-  overflow: hidden;
+  max-width: min(240px, 40vw);
 }
 
 .action {
-  justify-self: end;
-  color: var(--muted);
+  min-width: 42px;
+  color: var(--accent);
   font-size: 11px;
   text-align: right;
   white-space: nowrap;
+}
+
+.result:not([aria-selected="true"]):not(.closed) .action {
+  visibility: hidden;
 }
 
 .badges {
@@ -402,6 +416,7 @@ mark {
   color: var(--muted);
   font-size: 13px;
   text-align: center;
+  padding: 16px;
 }
 
 .results:empty {
@@ -416,8 +431,8 @@ mark {
 .hints {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
-  padding: 8px 14px 12px;
+  gap: 6px 14px;
+  padding: 9px 14px;
   border-top: 1px solid var(--border);
   color: var(--muted);
   font-size: 11px;
@@ -425,6 +440,19 @@ mark {
 
 .hints span {
   white-space: nowrap;
+}
+
+kbd {
+  display: inline-block;
+  padding: 2px 5px;
+  margin-right: 2px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: inherit;
+  font-weight: 600;
+  line-height: 1.2;
 }
 
 :root[data-overlay="true"],
@@ -444,9 +472,11 @@ mark {
 .onboarding, .search, .meta, .hints { flex-shrink: 0; }
 
 @media (max-width: 500px) {
-  .row-meta { min-width: 52px; width: 52px; grid-template-columns: 52px; }
-  .badges { display: none; }
+  .result { column-gap: 8px; row-gap: 3px; }
+  .row-meta { display: contents; }
+  .badges { grid-column: 2 / -1; grid-row: 2; justify-content: flex-start; flex-wrap: wrap; }
+  .badges[hidden] { display: none; }
+  .action { grid-column: 3; grid-row: 1; }
   .onboarding { grid-template-columns: 1fr auto; }
   .onboarding > div { grid-column: 1 / -1; }
-  .meta { padding-left: 14px; }
 }

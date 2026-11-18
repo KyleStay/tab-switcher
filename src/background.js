@@ -209,13 +209,17 @@ async function getSwitcherState(sender) {
   const [snapshot, activeTab, stored, session] = await Promise.all([
     getTabs(), getActiveTab(sender), chrome.storage.local.get(STORAGE_KEYS.firstRunSeen), chrome.storage.session.get(STORAGE_KEYS.lastQuery)
   ]);
+  const firstRunSeen = Boolean(stored[STORAGE_KEYS.firstRunSeen]);
+  const launchShortcuts = firstRunSeen ? [] : (await chrome.commands.getAll())
+    .filter(({ name, shortcut }) => shortcut && (name === "_execute_action" || name === "open-switcher-alt-windows"))
+    .map(({ shortcut }) => shortcut);
   return {
     activeTab: activeTab?.incognito && !snapshot.includePrivate ? null : activeTab,
     currentWindowId: activeTab?.windowId ?? null,
     tabs: listTabs(snapshot.mru, { activeTab, currentWindowId: activeTab?.windowId ?? null, currentWindowOnly: settings.currentWindowOnly }),
     closedTabs: [], settings,
     privateTabsAccess: snapshot.hasIncognitoAccess,
-    firstRunSeen: Boolean(stored[STORAGE_KEYS.firstRunSeen]),
+    firstRunSeen, launchShortcuts,
     lastQuery: settings.restorePreviousQuery && !settings.privateTabsEnabled && !activeTab?.incognito ? session[STORAGE_KEYS.lastQuery] || "" : ""
   };
 }

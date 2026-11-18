@@ -32,10 +32,6 @@ def build():
             for filename in ("switcher.html", "options.html"):
                 path = output / "src" / filename
                 text = path.read_text().replace("Tab Switcher", "Tab Switcher Dev")
-                text = text.replace(
-                    "Chrome may reserve shortcuts like Ctrl+Tab. Confirm Command+E, Ctrl+E, Option+E, or Alt+E in extension shortcut settings.",
-                    "Development shortcuts start unassigned. Choose unused shortcuts in extension shortcut settings; production remains active."
-                )
                 path.write_text(text)
         (output / "manifest.json").write_text(json.dumps(variant, indent=2) + "\n")
         archive = ROOT / "dist" / f"tab-switcher-{channel}-{variant['version']}.zip"

@@ -54,7 +54,7 @@ try {
   manifest.host_permissions = ["http://127.0.0.1/*"];
   await writeFile(join(extension, "manifest.json"), JSON.stringify(manifest));
   const runner = process.env.CHROME_EXTENSION_RUNNER || join(homedir(), ".codex/skills/chrome-extension-test-runner/scripts/launch_test_chrome.py");
-  const { stdout } = await run("python3", [runner, "--extension", extension, "--profile", profile, "--url", fixtureUrl + "/first"]);
+  const { stdout } = await run("python3", [runner, "--extension", extension, "--profile", profile, "--owner-pid", String(process.pid), "--url", fixtureUrl + "/first"]);
   const launch = JSON.parse(stdout);
   assert.ok(launch.debugger_ready && launch.extension_loaded);
   browser = await chromium.connectOverCDP("http://127.0.0.1:" + launch.debug_port);
@@ -82,6 +82,7 @@ try {
   await ui.locator("#queryInput").fill("restorable");
   await ui.locator("#queryInput").press("Control+w");
   await ui.waitForFunction(() => document.querySelector("[role=option]")?.getAttribute("aria-label").includes("Restore"));
+  assert.equal(await ui.locator("#enterHint").textContent(), "Restore");
   assert.ok(closingTab.isClosed());
   const restoredReady = context.waitForEvent("page");
   await ui.locator("#queryInput").press("Enter");
@@ -109,9 +110,11 @@ try {
   const options = await context.newPage();
   await options.goto(origin + "/src/options.html");
   await options.waitForFunction(() => !document.querySelector("[name=launchMode]").disabled);
+  assert.equal(await options.locator("#popupSites").isVisible(), false);
   await options.locator("[name=launchMode]").selectOption("hybrid");
   await options.waitForFunction(() => document.querySelector("#saveStatus").textContent === "Saved");
   assert.equal(await worker.evaluate(() => chrome.action.getPopup({})), "");
+  assert.equal(await options.locator("#popupSites").isVisible(), true);
   await options.locator(".help-button").first().click();
   assert.equal(await options.locator(".help-button").first().getAttribute("aria-expanded"), "true");
   assert.ok(await options.locator("[name=launchMode]").getAttribute("aria-describedby"));

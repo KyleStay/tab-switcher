@@ -19,5 +19,11 @@ test("development package preserves permissions and actions without claiming pro
   assert.equal(dev.name, production.name + " Dev");
   assert.equal(dev.key, undefined, "Do not fabricate a store identity");
   assert.equal(dev.externally_connectable, undefined, "No unverified peer arbitration");
+  for (const [size, path] of Object.entries(production.icons)) {
+    const icon = readFileSync(new URL(`../dist/production/${path}`, import.meta.url));
+    assert.equal(icon.readUInt32BE(16), Number(size));
+    assert.equal(icon.readUInt32BE(20), Number(size));
+  }
+  assert.ok(production.icons["128"], "Chrome Web Store icon is present");
   assert.deepEqual(build(), first, "Identical sources create identical release ZIPs");
 });

@@ -11,14 +11,14 @@
       <section class="onboarding" id="onboarding" hidden>
         <div>
           <h1>Tab Switcher</h1>
-          <p>Chrome may reserve shortcuts like Ctrl+Tab. Confirm Command+E, Ctrl+E, Option+E, or Alt+E in extension shortcut settings.</p>
+          <p id="onboardingShortcut">Set or change the keyboard shortcut in Chrome.</p>
         </div>
         <button type="button" id="shortcutSettingsButton">Shortcuts</button>
         <button type="button" class="icon-button" id="dismissOnboardingButton" aria-label="Dismiss">×</button>
       </section>
 
       <label class="search" for="queryInput">
-        <span class="prompt" aria-hidden="true">&gt;</span>
+        <span class="search-icon" aria-hidden="true"></span>
         <span class="sr-only">Search open and recently closed tabs</span>
         <input
           id="queryInput"
@@ -29,17 +29,17 @@
           role="combobox"
           aria-autocomplete="list"
           aria-controls="results"
-          aria-expanded="true"
+          aria-expanded="false"
         >
       </label>
 
       <div class="meta">
-        <span id="resultSummary" role="status" aria-live="polite">Loading tabs...</span>
+        <span id="resultSummary" role="status">Loading tabs…</span>
         <div class="meta-actions">
           <button type="button" id="retryButton" hidden>Retry</button>
           <button type="button" id="popupButton" hidden>Popup</button>
-          <button type="button" id="extensionViewButton">Use popup here</button>
-          <button type="button" id="optionsButton">Options</button>
+          <button type="button" id="extensionViewButton" hidden>Always use popup here</button>
+          <button type="button" id="optionsButton">Settings</button>
         </div>
       </div>
 
@@ -47,12 +47,12 @@
       <div class="empty results-message" id="resultsMessage" hidden></div>
 
       <footer class="hints">
-        <span>Enter switch</span>
-        <span id="cycleHint">Arrows cycle</span>
-        <span>Esc clear/close</span>
-        <span id="copyHint">Ctrl+C copy URL</span>
-        <span id="closeHint">Ctrl+W close tab</span>
-        <span id="revealHint" hidden></span>
+        <span><kbd>↑ ↓</kbd> Navigate</span>
+        <span><kbd>Enter</kbd> <span id="enterHint">Switch</span></span>
+        <span><kbd>Esc</kbd> <span id="escapeHint">Dismiss</span></span>
+        <span><kbd id="copyHint">Ctrl+C</kbd> Copy URL</span>
+        <span><kbd id="closeHint">Ctrl+W</kbd> Close tab</span>
+        <span id="revealHint" hidden><kbd id="revealKey">Ctrl+R</kbd> Reveal private</span>
       </footer>
     </main>
     <script type="module" src="switcher.js"></script>

@@ -80,6 +80,18 @@ test("background reads one live snapshot, recovers settings, and removes obsolet
   assert.deepEqual(next.state.tabs.map((tab) => tab.id), [1, 3, 2, 5]);
 });
 
+test("onboarding reports assigned launch shortcuts until dismissed", async () => {
+  const app = await boot();
+  chrome.commands.getAll = async () => [
+    { name: "_execute_action", shortcut: "⌘E" },
+    { name: "open-switcher-alt-windows", shortcut: "" },
+    { name: "switch-previous-tab", shortcut: "⌥Q" }
+  ];
+  assert.deepEqual((await app.send({ type: "get-state" })).state.launchShortcuts, ["⌘E"]);
+  await app.send({ type: "mark-first-run-seen" });
+  assert.deepEqual((await app.send({ type: "get-state" })).state.launchShortcuts, []);
+});
+
 test("private data and actions require opt-in; iframe requests require the session token", async () => {
   const app = await boot();
   assert.equal((await app.send({ type: "activate-tab", tab: { id: 4 } })).ok, false);
