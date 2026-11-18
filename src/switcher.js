@@ -338,18 +338,32 @@ function displayItemForResult(result, index = selectedIndex) {
 
 function renderIcon(item) {
   if (item.usePrivateFallbackIcon) return renderPrivateIcon();
-  if (item.favIconUrl && item.url && /^https?:\/\//i.test(item.url)) {
-    const url = new URL(chrome.runtime.getURL("/_favicon/"));
-    url.searchParams.set("pageUrl", item.url);
-    url.searchParams.set("size", "32");
-    const image = document.createElement("img");
-    image.className = "favicon";
-    image.alt = "";
+  const fallback = renderFallbackIcon(item);
+  const pageUrl = item.private ? privateTabsByKey.get(item.privateKey)?.url : item.url;
+  if (!item.favIconUrl || !/^https?:\/\//i.test(pageUrl || "")) return fallback;
+
+  const url = new URL(chrome.runtime.getURL("/_favicon/"));
+  url.searchParams.set("pageUrl", pageUrl);
+  url.searchParams.set("size", "32");
+  const image = document.createElement("img");
+  image.className = "favicon";
+  image.alt = "";
+  if (item.private) {
+    // Keep the private lookup URL out of the rendered DOM even when the icon is visible.
+    image.addEventListener("load", () => {
+      const icon = document.createElement("canvas");
+      icon.className = "favicon";
+      icon.width = icon.height = 32;
+      icon.setAttribute("aria-hidden", "true");
+      icon.getContext("2d").drawImage(image, 0, 0, 32, 32);
+      fallback.replaceWith(icon);
+    }, { once: true });
     image.src = url.href;
-    image.addEventListener("error", () => image.replaceWith(renderFallbackIcon(item)));
-    return image;
+    return fallback;
   }
-  return renderFallbackIcon(item);
+  image.addEventListener("error", () => image.replaceWith(fallback), { once: true });
+  image.src = url.href;
+  return image;
 }
 
 function renderPrivateIcon() {
