@@ -81,7 +81,13 @@ test("mergeSettings normalizes private tab settings", () => {
 });
 
 test("command labels cover every manifest command", () => {
-  assert.deepEqual(Object.keys(COMMAND_LABELS).sort(), Object.keys(manifest.commands).sort());
+  const { _execute_action: actionLabel, ...namedLabels } = COMMAND_LABELS;
+  assert.deepEqual(Object.keys(namedLabels).sort(), Object.keys(manifest.commands).sort());
+  assert.equal(actionLabel, "Activate the extension");
+  assert.equal(manifest.commands["open-switcher"].suggested_key.mac, "Command+E");
+  for (const command of ["open-switcher", "open-switcher-alt-windows"]) {
+    assert.equal(namedLabels[command], manifest.commands[command].description);
+  }
 });
 
 test("malformed stored settings recover to defaults", () => {

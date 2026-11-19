@@ -54,7 +54,7 @@ try {
   manifest.host_permissions = ["http://127.0.0.1/*"];
   await writeFile(join(extension, "manifest.json"), JSON.stringify(manifest));
   const runner = process.env.CHROME_EXTENSION_RUNNER || join(homedir(), ".codex/skills/chrome-extension-test-runner/scripts/launch_test_chrome.py");
-  const { stdout } = await run("python3", [runner, "--extension", extension, "--profile", profile, "--url", fixtureUrl + "/first"]);
+  const { stdout } = await run("python3", [runner, "--extension", extension, "--profile", profile, "--owner-pid", String(process.pid), "--url", fixtureUrl + "/first"]);
   const launch = JSON.parse(stdout);
   assert.ok(launch.debugger_ready && launch.extension_loaded);
   browser = await chromium.connectOverCDP("http://127.0.0.1:" + launch.debug_port);
@@ -66,6 +66,11 @@ try {
   context.pages().forEach(captureErrors);
   const worker = context.serviceWorkers().find((entry) => entry.url().includes(launch.extension_id));
   const origin = "chrome-extension://" + launch.extension_id;
+  const commands = await worker.evaluate(() => chrome.commands.getAll());
+  const primary = commands.find(({ name }) => name === "open-switcher");
+  assert.equal(primary?.description, "Open Tab Switcher");
+  if (process.platform === "darwin") assert.match(primary.shortcut, /^(⌘|Command\+)E$/);
+  assert.ok(!commands.some(({ name, shortcut }) => name === "_execute_action" && shortcut));
   const page = context.pages().find((entry) => entry.url().startsWith(fixtureUrl));
   const closingTab = await context.newPage();
   await closingTab.goto(fixtureUrl + "/restorable");
@@ -79,19 +84,44 @@ try {
   assert.notEqual(await ui.locator(":focus").getAttribute("id"), "queryInput");
   await ui.locator("#queryInput").fill("first");
   assert.match(await ui.locator("[role=option]").first().getAttribute("aria-label"), /Switch/);
-  await ui.locator("#queryInput").fill("restorable");
-  await ui.locator("#queryInput").press("Control+w");
+  const query = ui.locator("#queryInput");
+  await query.fill("restorablex");
+  await query.press("Backspace");
+  assert.equal(await query.inputValue(), "restorable");
+  assert.equal(closingTab.isClosed(), false);
+  await query.clear();
+  const rows = ui.locator("[role=option]");
+  const closingIndex = (await rows.evaluateAll((options) => options.map((option) => option.ariaLabel)))
+    .findIndex((label) => label.includes("Fixture /restorable"));
+  assert.ok(closingIndex >= 0);
+  await query.press("Home");
+  for (let i = 0; i < closingIndex; i++) await query.press("ArrowDown");
+  assert.match(await ui.locator('[aria-selected="true"]').getAttribute("aria-label"), /Fixture \/restorable/);
+  await Promise.all([closingTab.waitForEvent("close"), query.press("Backspace")]);
+  assert.equal(page.isClosed(), false);
+  await query.fill("restorable");
   await ui.waitForFunction(() => document.querySelector("[role=option]")?.getAttribute("aria-label").includes("Restore"));
-  assert.ok(closingTab.isClosed());
+  assert.equal(await ui.locator("#enterHint").textContent(), "Restore");
+  assert.equal(await ui.getByRole("button", { name: /^Close tab:/ }).count(), 0);
   const restoredReady = context.waitForEvent("page");
   await ui.locator("#queryInput").press("Enter");
   await restoredReady;
   assert.ok(await worker.evaluate(async (url) => (await chrome.tabs.query({ url })).length > 0, fixtureUrl + "/restorable"));
   // Activation closes the switcher; open a fresh instance for remaining checks.
   if (!ui.isClosed()) await ui.close();
+  const clickTab = await context.newPage();
+  await clickTab.goto(fixtureUrl + "/close-with-button");
   ui = await context.newPage();
   await ui.setViewportSize({ width: 720, height: 600 });
   await ui.goto(origin + "/src/switcher.html");
+  await ui.locator("[role=option]").first().waitFor();
+  await ui.locator("#queryInput").fill("close-with-button");
+  const closeButton = ui.getByRole("button", { name: "Close tab: Fixture /close-with-button" });
+  await Promise.all([clickTab.waitForEvent("close"), closeButton.click()]);
+  await closeButton.waitFor({ state: "detached" });
+  assert.equal(await ui.locator("#queryInput").inputValue(), "close-with-button");
+  assert.equal(await ui.locator(":focus").getAttribute("id"), "queryInput");
+  assert.equal(page.isClosed(), false);
   await ui.locator("#queryInput").fill("first");
 
   await page.bringToFront();
@@ -103,15 +133,18 @@ try {
     return { width: popup.innerWidth, height: popup.innerHeight, scrollWidth: popup.document.documentElement.scrollWidth };
   });
   assert.ok(popupSize.width >= 620 && popupSize.width <= 720, JSON.stringify(popupSize));
+  assert.ok(popupSize.height >= 180 && popupSize.height < 480, JSON.stringify(popupSize));
   assert.equal(popupSize.scrollWidth, popupSize.width);
   await ui.evaluate(() => chrome.extension.getViews({ type: "popup" })[0].close());
 
   const options = await context.newPage();
   await options.goto(origin + "/src/options.html");
   await options.waitForFunction(() => !document.querySelector("[name=launchMode]").disabled);
+  assert.equal(await options.locator("#popupSites").isVisible(), false);
   await options.locator("[name=launchMode]").selectOption("hybrid");
   await options.waitForFunction(() => document.querySelector("#saveStatus").textContent === "Saved");
   assert.equal(await worker.evaluate(() => chrome.action.getPopup({})), "");
+  assert.equal(await options.locator("#popupSites").isVisible(), true);
   await options.locator(".help-button").first().click();
   assert.equal(await options.locator(".help-button").first().getAttribute("aria-expanded"), "true");
   assert.ok(await options.locator("[name=launchMode]").getAttribute("aria-describedby"));
@@ -172,19 +205,27 @@ try {
   assert.equal(await privatePage.locator("[role=option]").count(), 1, "Hidden private content remains searchable with explicit opt-in");
   assert.doesNotMatch(await privatePage.locator("#results").textContent(), /Secret Needle|secret\.test/);
   assert.doesNotMatch(await privatePage.locator("[role=option]").getAttribute("aria-label"), /Secret Needle|secret\.test/);
+  assert.doesNotMatch(await privatePage.locator(".close-tab").getAttribute("aria-label"), /Secret Needle|secret\.test/);
 
   await ui.bringToFront();
   await ui.emulateMedia({ colorScheme: "light" });
-  assert.equal(await ui.locator("mark").first().evaluate((mark) => getComputedStyle(mark).color), "rgb(128, 84, 0)");
+  assert.equal(await ui.locator("mark").first().evaluate((mark) => getComputedStyle(mark).color), "rgb(11, 87, 208)");
+  if (artifacts) {
+    await mkdir(resolve(artifacts), { recursive: true });
+    await ui.locator(".shell").screenshot({ path: join(artifacts, "switcher-light.png") });
+  }
+  await ui.emulateMedia({ colorScheme: "dark" });
+  assert.equal(await ui.locator("mark").first().evaluate((mark) => getComputedStyle(mark).color), "rgb(194, 215, 255)");
+  if (artifacts) await ui.locator(".shell").screenshot({ path: join(artifacts, "switcher-dark.png") });
+  await ui.emulateMedia({ colorScheme: "light" });
   await ui.setViewportSize({ width: 360, height: 420 });
   assert.ok(await ui.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   if (artifacts) {
-    await mkdir(resolve(artifacts), { recursive: true });
     await ui.screenshot({ path: join(artifacts, "narrow-switcher.png") });
     await options.screenshot({ path: join(artifacts, "options.png"), fullPage: true });
   }
   assert.deepEqual(errors, []);
-  console.log("PASS: shared popup/overlay, focus, frame isolation, token checks, settings, private search/redaction, light theme, narrow layout.");
+  console.log("PASS: shared popup/overlay, tab closing and restoration, focus, frame isolation, token checks, settings, private search/redaction, light theme, narrow layout.");
 } finally {
   await cleanup();
 }

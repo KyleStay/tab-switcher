@@ -15,17 +15,19 @@ Tab Switcher is a Manifest V3 Chrome extension that brings a VS Code-style quick
 
 The extension suggests these default shortcuts:
 
-- `Command+E` on macOS or `Ctrl+E` elsewhere: open the switcher. `Option+E` on macOS or `Alt+E` elsewhere is also suggested as an alternate.
+- `Command+E` on macOS or `Ctrl+E` elsewhere: **Open Tab Switcher**. `Option+E` on macOS or `Alt+E` elsewhere is suggested for **Open Tab Switcher (alternate)**.
 - `Option+Q` on macOS or `Alt+Q` elsewhere: cycle to the next older MRU tab.
 - `Option+Shift+Q` on macOS or `Alt+Shift+Q` elsewhere: cycle to the next newer MRU tab.
 
 Inside the switcher, use arrows, page keys, `Home`/`End`, or `Command`/`Ctrl` + `J`/`K`/`N`/`P` to move through results, then press `Enter`. `Tab` and `Shift+Tab` move between search and buttons.
 
-Chrome may decline reserved shortcuts, and browser shortcuts such as `Ctrl+Tab` are not reliably assignable to extensions. Visit `chrome://extensions/shortcuts` after loading the extension to confirm or remap Tab Switcher's shortcuts.
+When search is empty, press `Delete` on macOS or `Backspace` on Windows to close the selected open tab. Use the row’s × button to close an open tab with any search.
+
+Chrome may leave a shortcut unassigned if it is reserved or already in use. Visit `chrome://extensions/shortcuts` to confirm or remap **Open Tab Switcher**. Chrome manages any existing custom bindings.
 
 ## Load Locally
 
-Requires Chrome 127 or newer. Choose popup or overlay with popup fallback in Options; both launch shortcuts and the toolbar follow this setting.
+Requires Chrome 127 or newer. The default popup is anchored to Chrome’s toolbar. Choose **Centered overlay with popup fallback** in Settings to open the switcher in the middle of supported webpages. The launch shortcuts and toolbar follow that setting.
 
 1. Open `chrome://extensions`.
 2. Enable **Developer mode**.
@@ -50,6 +52,10 @@ No install step is required for the current test suite.
 ```sh
 npm test
 ```
+
+`npm run package` builds the Store upload ZIP and the unpacked **Tab Switcher Dev** build in `dist/dev`. With the updated Store build and Dev enabled in the same profile, the public toolbar action and assigned shortcuts run in Dev. When Dev is disabled or absent, the public build handles them again. Settings stay per installation. Dev has no suggested shortcuts, so it can use the public bindings while both copies are enabled. For Dev alone, assign its own shortcuts in Chrome.
+
+Use the packaged Dev folder for this behavior. Earlier keyless Dev builds have a different ID. The Store build must be updated on the existing listing before it can hand off commands. A forwarded launch may use the toolbar popup when Chrome grants page access only to the public build. The public build handles commands in windows Dev cannot access.
 
 When changing extension UI or Chrome APIs, reload the unpacked extension from `chrome://extensions` before testing in the browser.
 

@@ -1,6 +1,6 @@
 {
   "name": "tab-switcher",
-  "version": "0.1.1",
+  "version": "0.2.1",
   "private": true,
   "description": "A VS Code-style quick tab switcher for Chrome.",
   "type": "module",

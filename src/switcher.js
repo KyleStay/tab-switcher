@@ -1,4 +1,5 @@
 import { buildSearchDocument, rankItems, formatUrl } from "./core/fuzzy.js";
+import { DEVELOPMENT_ID } from "./core/channels.js";
 import { tabKey, wrapIndex } from "./core/mru.js";
 import { normalizeHost } from "./core/defaults.js";
 import { DEFAULT_EXTENSION_VIEW_HOSTS } from "./core/messages.js";
@@ -17,6 +18,7 @@ const isMac = navigator.platform.toLowerCase().includes("mac");
 const elements = {
   shell: document.querySelector(".shell"),
   onboarding: document.querySelector("#onboarding"),
+  onboardingShortcut: document.querySelector("#onboardingShortcut"),
   dismissOnboardingButton: document.querySelector("#dismissOnboardingButton"),
   shortcutSettingsButton: document.querySelector("#shortcutSettingsButton"),
   optionsButton: document.querySelector("#optionsButton"),
@@ -25,10 +27,12 @@ const elements = {
   results: document.querySelector("#results"),
   resultsMessage: document.querySelector("#resultsMessage"),
   extensionViewButton: document.querySelector("#extensionViewButton"),
-  cycleHint: document.querySelector("#cycleHint"),
+  enterHint: document.querySelector("#enterHint"),
+  escapeHint: document.querySelector("#escapeHint"),
   copyHint: document.querySelector("#copyHint"),
   closeHint: document.querySelector("#closeHint"),
   revealHint: document.querySelector("#revealHint"),
+  revealKey: document.querySelector("#revealKey"),
   popupButton: document.querySelector("#popupButton"),
   retryButton: document.querySelector("#retryButton")
 };
@@ -39,6 +43,7 @@ let ranked = [];
 let selectedIndex = 0;
 let renderedRows = [];
 let closedTabsRequestId = 0;
+let closingTab = false;
 let revealState = clearPrivateTabState();
 let privateTabsByKey = new Map();
 let revealTimer;
@@ -118,7 +123,9 @@ function bindEvents() {
   elements.dismissOnboardingButton.addEventListener("click", async () => {
     try {
       await send({ type: "mark-first-run-seen" });
+      if (state) state.firstRunSeen = true;
       elements.onboarding.hidden = true;
+      elements.queryInput.focus();
     } catch (error) { showActionError(error); }
   });
   elements.retryButton.addEventListener("click", init);
@@ -133,11 +140,19 @@ function applySettings() {
   document.documentElement.dataset.theme = state.settings.theme === "system" ? "" : state.settings.theme;
   elements.onboarding.hidden = state.firstRunSeen;
   const modifier = isMac ? "Cmd" : "Ctrl";
-  elements.cycleHint.textContent = `Arrows, ${modifier}+J/K or N/P cycle`;
-  elements.copyHint.textContent = `${modifier}+C copy URL`;
-  elements.revealHint.textContent = `${modifier}+R reveal private`;
+  if (!state.firstRunSeen) {
+    const assigned = state.launchShortcuts || [];
+    elements.onboardingShortcut.textContent = assigned.length
+      ? `Open the switcher with ${assigned.join(" or ")}.`
+      : "Set a keyboard shortcut in Chrome.";
+    if (!assigned.length && chrome.runtime.id === DEVELOPMENT_ID) {
+      elements.onboardingShortcut.textContent = "Use the public build’s shortcuts when it’s enabled, or assign a shortcut for Dev.";
+    }
+  }
+  elements.copyHint.textContent = `${modifier}+C`;
+  elements.revealKey.textContent = `${modifier}+R`;
   elements.revealHint.hidden = !state.settings.privateTabsEnabled || state.settings.privateRevealMode !== "manual";
-  elements.closeHint.textContent = `${modifier}+W close tab`;
+  elements.closeHint.textContent = isMac ? "Delete" : "Backspace";
   elements.extensionViewButton.hidden = state.settings.launchMode === "popup" || !canAddActiveSite();
 }
 
@@ -270,12 +285,13 @@ function renderResult(result, index) {
   const item = displayItemForResult(result, index);
   const row = document.createElement("div");
   row.id = resultId(index);
-  row.className = `result ${item.type === "closed" ? "closed" : ""} ${item.active ? "active-tab" : ""} ${item.private ? "private-tab" : ""}`;
+  row.className = `result ${item.type === "closed" ? "closed" : ""} ${item.private ? "private-tab" : ""}`;
   row.role = "option";
   row.dataset.index = String(index);
   row.ariaSelected = "false";
-  const actionLabel = item.type === "closed" ? "Restore" : item.active ? "Current" : "Switch";
-  row.setAttribute("aria-label", [item.ariaLabel, ...buildBadges(item), actionLabel].filter(Boolean).join(", "));
+  const actionLabel = item.type === "closed" ? "Restore" : "Switch";
+  const badgesForItem = buildBadges(item);
+  row.setAttribute("aria-label", [item.ariaLabel, ...badgesForItem, actionLabel].filter(Boolean).join(", "));
 
   const icon = renderIcon(item);
   const text = document.createElement("div");
@@ -298,11 +314,24 @@ function renderResult(result, index) {
   meta.className = "row-meta";
   const badges = document.createElement("span");
   badges.className = "badges";
-  badges.append(...buildBadges(item).map(renderBadge));
+  badges.hidden = !badgesForItem.length;
+  badges.append(...badgesForItem.map(renderBadge));
   const action = document.createElement("span");
   action.className = "action";
   action.textContent = actionLabel;
-  meta.append(badges, action);
+  const actions = document.createElement("div");
+  actions.className = "row-actions";
+  actions.append(action);
+  if (item.type === "tab") {
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.className = "icon-button close-tab";
+    closeButton.setAttribute("aria-label", `Close tab: ${titleText}`);
+    closeButton.title = "Close tab";
+    closeButton.textContent = "×";
+    actions.append(closeButton);
+  }
+  meta.append(badges, actions);
 
   row.append(icon, text, meta);
   return row;
@@ -326,15 +355,32 @@ function displayItemForResult(result, index = selectedIndex) {
 
 function renderIcon(item) {
   if (item.usePrivateFallbackIcon) return renderPrivateIcon();
-  if (item.favIconUrl) {
-    const image = document.createElement("img");
-    image.className = "favicon";
-    image.alt = "";
-    image.src = item.favIconUrl;
-    image.addEventListener("error", () => image.replaceWith(renderFallbackIcon(item)));
-    return image;
+  const fallback = renderFallbackIcon(item);
+  const pageUrl = item.private ? privateTabsByKey.get(item.privateKey)?.url : item.url;
+  if (!item.favIconUrl || !/^https?:\/\//i.test(pageUrl || "")) return fallback;
+
+  const url = new URL(chrome.runtime.getURL("/_favicon/"));
+  url.searchParams.set("pageUrl", pageUrl);
+  url.searchParams.set("size", "32");
+  const image = document.createElement("img");
+  image.className = "favicon";
+  image.alt = "";
+  if (item.private) {
+    // Keep the private lookup URL out of the rendered DOM even when the icon is visible.
+    image.addEventListener("load", () => {
+      const icon = document.createElement("canvas");
+      icon.className = "favicon";
+      icon.width = icon.height = 32;
+      icon.setAttribute("aria-hidden", "true");
+      icon.getContext("2d").drawImage(image, 0, 0, 32, 32);
+      fallback.replaceWith(icon);
+    }, { once: true });
+    image.src = url.href;
+    return fallback;
   }
-  return renderFallbackIcon(item);
+  image.addEventListener("error", () => image.replaceWith(fallback), { once: true });
+  image.src = url.href;
+  return image;
 }
 
 function renderPrivateIcon() {
@@ -349,7 +395,7 @@ function renderFallbackIcon(item) {
   const fallback = document.createElement("span");
   fallback.className = "fallback-icon";
   fallback.setAttribute("aria-hidden", "true");
-  fallback.textContent = item.type === "closed" ? "R" : "T";
+  fallback.textContent = item.type === "closed" ? "↶" : item.private ? "P" : (item.displayUrl || item.title || "T").charAt(0).toUpperCase();
   return fallback;
 }
 
@@ -362,6 +408,7 @@ function renderBadge(label) {
 
 function buildBadges(item) {
   const badges = [];
+  if (state.activeTab && item.type === "tab" && tabKey(item) === tabKey(state.activeTab)) badges.push("Current");
   if (item.type === "closed") badges.push("Recently closed");
   else if (item.showWindow) badges.push(`Window ${item.windowId}`);
   if (item.duplicateOrdinal) badges.push(`#${item.duplicateOrdinal}`);
@@ -398,9 +445,10 @@ async function handleKeyDown(event) {
   } else if (event.key === "Enter" || shouldActivateSelectionOnSpace(event, elements.queryInput.value)) {
     event.preventDefault();
     await activateSelected();
-  } else if (isCtrlChord(event, ["w"])) {
+  } else if ((event.key === "Backspace" || event.key === "Delete")
+    && !elements.queryInput.value && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
     event.preventDefault();
-    await closeSelected();
+    if (!event.repeat) await closeTab(ranked[selectedIndex]?.item);
   } else if (isCtrlChord(event, ["c"])) {
     if (hasInputSelection()) return;
     event.preventDefault();
@@ -431,7 +479,13 @@ function handlePointerMove(event) {
 async function handleClick(event) {
   const row = event.target.closest(".result");
   if (!row) return;
-  selectedIndex = Number(row.dataset.index);
+  const index = Number(row.dataset.index);
+  if (event.target.closest(".close-tab")) {
+    elements.queryInput.focus({ preventScroll: true });
+    await closeTab(ranked[index]?.item);
+    return;
+  }
+  selectedIndex = index;
   await activateSelected();
 }
 
@@ -458,6 +512,12 @@ function setSelection(index) {
 }
 
 function updateSelection() {
+  const selected = ranked[selectedIndex]?.item;
+  elements.enterHint.textContent = selected?.type === "closed" ? "Restore" : "Switch";
+  elements.enterHint.parentElement.hidden = !selected;
+  elements.escapeHint.textContent = elements.queryInput.value ? "Clear search" : "Dismiss";
+  elements.copyHint.parentElement.hidden = !selected;
+  elements.closeHint.parentElement.hidden = selected?.type !== "tab" || Boolean(elements.queryInput.value);
   for (const row of renderedRows) row.ariaSelected = "false";
   const selectedRow = renderedRows[selectedIndex];
   if (!selectedRow) {
@@ -485,19 +545,23 @@ async function activateSelected() {
   }
 }
 
-async function closeSelected() {
-  const selected = ranked[selectedIndex]?.item;
-  if (!selected || selected.type === "closed") return;
+async function closeTab(tab) {
+  if (tab?.type !== "tab" || closingTab) return;
 
+  closingTab = true;
   try {
     closedTabsRequestId += 1;
-    await send({ type: "close-tab", tab: selected });
-    state = await send({ type: "get-state" }).then((response) => response.state);
+    await send({ type: "close-tab", tab: { id: tab.id } });
+    const response = await send({ type: "get-state" });
+    if (!state) return;
+    state = response.state;
     prepareItems();
     render({ preserveSelection: true });
     loadClosedTabs();
   } catch (error) {
     showActionError(error);
+  } finally {
+    closingTab = false;
   }
 }
 
@@ -561,6 +625,7 @@ function clearQuery() {
 }
 
 function persistQuery() {
+  if (!state.settings.restorePreviousQuery || state.settings.privateTabsEnabled) return;
   const query = elements.queryInput.value;
   queryQueue = queryQueue.then(() => send({ type: "save-query", query })).catch(showActionError);
 }
@@ -582,27 +647,27 @@ function summarizeResults(results, query) {
   const closedCount = results.length - openCount;
   if (!query.trim()) {
     return closedCount
-      ? `${openCount} recent open, ${closedCount} recently closed`
-      : `${openCount} recent ${openCount === 1 ? "tab" : "tabs"}`;
+      ? `${openCount} open · ${closedCount} recently closed`
+      : `${openCount} open ${openCount === 1 ? "tab" : "tabs"}`;
   }
   return `${results.length} ${results.length === 1 ? "match" : "matches"}`;
 }
 
 function renderLoading() {
   elements.retryButton.hidden = true;
-  elements.resultSummary.textContent = "Loading tabs...";
+  elements.resultSummary.textContent = "Loading tabs…";
   elements.results.replaceChildren();
   elements.results.setAttribute("aria-busy", "true");
   elements.queryInput.setAttribute("aria-expanded", "false");
-  setResultsMessage("Loading tabs...");
+  setResultsMessage("");
 }
 
 function renderEmpty(query) {
-  setResultsMessage(query.trim() ? "No matching tabs" : "No tabs available yet");
+  setResultsMessage(query.trim() ? "Try a different title or URL." : "");
 }
 
 function renderError(error) {
-  elements.resultSummary.textContent = error?.message || "Could not load tabs";
+  elements.resultSummary.textContent = "Could not load tabs";
   elements.retryButton.hidden = false;
   elements.results.replaceChildren();
   elements.results.setAttribute("aria-busy", "false");

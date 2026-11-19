@@ -1,11 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_SETTINGS, STORAGE_KEYS } from "../src/core/defaults.js";
+import { DEVELOPMENT_ID, PUBLIC_ID } from "../src/core/channels.js";
 
 let generation = 0;
-async function boot(storedSettings = null) {
+async function boot(storedSettings = null, runtimeId = "test-extension") {
   const listeners = {};
-  const calls = { popup: [], writes: [], created: [], activated: [], windows: [] };
+  const calls = { popup: [], opened: [], writes: [], created: [], activated: [], windows: [] };
   const tabs = [
     { id: 1, windowId: 1, index: 0, active: true, title: "Current", url: "https://example.test/", lastAccessed: 300 },
     { id: 2, windowId: 1, index: 1, title: "Previous", url: "https://example.test/2", lastAccessed: 200 },
@@ -21,14 +22,17 @@ async function boot(storedSettings = null) {
     remove: async (key) => { delete data[key]; }
   });
   const event = (name) => ({ addListener: (fn) => { listeners[name] = fn; } });
-  const origin = "chrome-extension://test-extension/";
+  const origin = `chrome-extension://${runtimeId}/`;
   globalThis.chrome = {
-    runtime: { id: "test-extension", getURL: (path) => origin + path, onMessage: event("message") },
+    runtime: {
+      id: runtimeId, getURL: (path) => origin + path,
+      onMessage: event("message"), onMessageExternal: event("external")
+    },
     commands: { onCommand: event("command"), getAll: async () => [] },
     action: {
       onClicked: event("action"),
       setPopup: async ({ popup }) => { calls.popup.push(popup); },
-      openPopup: async () => { throw new Error("Popup unavailable"); }
+      openPopup: async (options) => { calls.opened.push(options); }
     },
     extension: { isAllowedIncognitoAccess: async () => true },
     storage: { local: storage(local), session: storage(session) },
@@ -46,7 +50,7 @@ async function boot(storedSettings = null) {
     },
     tabs: {
       onRemoved: event("removed"),
-      query: async () => tabs.filter((tab) => tab.active),
+      query: async ({ windowId }) => tabs.filter((tab) => tab.active && (windowId === undefined || tab.windowId === windowId)),
       get: async (id) => { const tab = tabs.find((tab) => tab.id === id); if (!tab) throw new Error("Missing tab"); return tab; },
       update: async (id) => {
         calls.activated.push(id);
@@ -60,7 +64,7 @@ async function boot(storedSettings = null) {
     sessions: { getRecentlyClosed: async () => [], restore: async () => {} }
   };
   await import(`../src/background.js?test=${generation++}`);
-  const sender = { id: "test-extension", url: origin + "src/switcher.html", frameId: 0 };
+  const sender = { id: runtimeId, url: origin + "src/switcher.html", frameId: 0 };
   const send = (message, context = sender) => new Promise((resolve) => listeners.message(message, context, resolve));
   await send({ type: "get-settings" });
   return { send, sender, calls, local, session, tabs, listeners };
@@ -80,6 +84,19 @@ test("background reads one live snapshot, recovers settings, and removes obsolet
   assert.deepEqual(next.state.tabs.map((tab) => tab.id), [1, 3, 2, 5]);
 });
 
+test("onboarding reports assigned launch shortcuts until dismissed", async () => {
+  const app = await boot();
+  chrome.commands.getAll = async () => [
+    { name: "_execute_action", shortcut: "⌘K" },
+    { name: "open-switcher-alt-windows", shortcut: "" },
+    { name: "open-switcher", shortcut: "⌘E" },
+    { name: "switch-previous-tab", shortcut: "⌥Q" }
+  ];
+  assert.deepEqual((await app.send({ type: "get-state" })).state.launchShortcuts, ["⌘E", "⌘K"]);
+  await app.send({ type: "mark-first-run-seen" });
+  assert.deepEqual((await app.send({ type: "get-state" })).state.launchShortcuts, []);
+});
+
 test("private data and actions require opt-in; iframe requests require the session token", async () => {
   const app = await boot();
   assert.equal((await app.send({ type: "activate-tab", tab: { id: 4 } })).ok, false);
@@ -95,8 +112,72 @@ test("private data and actions require opt-in; iframe requests require the sessi
   assert.equal((await app.send({ type: "get-state", token: "bad" }, iframe)).ok, false);
 });
 
+test("both named launch commands open the native popup in the invoking tab's window", async () => {
+  const app = await boot();
+  app.listeners.command("open-switcher", app.tabs[4]);
+  app.listeners.command("open-switcher-alt-windows");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(app.calls.opened, [{ windowId: 3 }, { windowId: 1 }]);
+  assert.deepEqual(app.calls.created, []);
+});
+
+test("the public action and every shortcut yield to Dev and recover when Dev disappears", async () => {
+  const app = await boot(null, PUBLIC_ID);
+  const forwarded = [];
+  chrome.runtime.sendMessage = async () => { throw new Error("Dev is unavailable"); };
+  assert.equal(app.calls.popup.at(-1), "", "The toolbar must dispatch the public action event");
+  await app.listeners.action(app.tabs[0]);
+  assert.deepEqual(app.calls.opened, [{ windowId: 1 }]);
+  assert.equal(app.calls.popup.at(-1), "");
+
+  chrome.runtime.sendMessage = async (id, message) => {
+    assert.equal(id, DEVELOPMENT_ID);
+    assert.deepEqual(Object.keys(message).sort(), ["command", "type", "windowId"]);
+    assert.equal(message.type, "tab-switcher:run-command");
+    forwarded.push([message.command, message.windowId]);
+    return true;
+  };
+  await app.listeners.action(app.tabs[4]);
+  for (const command of ["open-switcher", "open-switcher-alt-windows", "switch-previous-tab", "switch-next-tab"]) {
+    await app.listeners.command(command, app.tabs[0]);
+  }
+  assert.deepEqual(forwarded.sort(), [
+    ["open-switcher", 1], ["open-switcher", 3], ["open-switcher-alt-windows", 1],
+    ["switch-next-tab", 1], ["switch-previous-tab", 1]
+  ]);
+  assert.deepEqual(app.calls.opened, [{ windowId: 1 }]);
+  assert.deepEqual(app.calls.activated, []);
+
+  chrome.runtime.sendMessage = async () => false;
+  await app.listeners.action(app.tabs[4]);
+  assert.deepEqual(app.calls.opened, [{ windowId: 1 }, { windowId: 3 }]);
+  await app.listeners.command("switch-previous-tab", app.tabs[0]);
+  assert.deepEqual(app.calls.activated, [2]);
+});
+
+test("Dev dispatches only the public build's valid commands in an accessible window", async () => {
+  const app = await boot(null, DEVELOPMENT_ID);
+  chrome.runtime.sendMessage = () => assert.fail("Dev must not forward commands");
+  const message = { type: "tab-switcher:run-command", command: "open-switcher", windowId: 1 };
+  const publicSender = { id: PUBLIC_ID };
+  const noResponse = () => assert.fail("Invalid messages must not run commands");
+  assert.equal(app.listeners.external(message, { id: "untrusted" }, noResponse), false);
+  assert.equal(app.listeners.external({ ...message, command: "close-tab" }, publicSender, noResponse), false);
+  assert.equal(app.listeners.external({ ...message, windowId: -1 }, publicSender, noResponse), false);
+  const send = (request) => new Promise((resolve) => {
+    assert.equal(app.listeners.external(request, publicSender, resolve), true);
+  });
+  assert.equal(await send({ ...message, windowId: 99 }), false);
+  assert.deepEqual(app.calls.opened, []);
+  assert.equal(await send(message), true);
+  assert.deepEqual(app.calls.opened, [{ windowId: 1 }]);
+  assert.equal(await send({ ...message, command: "switch-previous-tab" }), true);
+  assert.deepEqual(app.calls.activated, [2]);
+});
+
 test("launch mode configures the action and rejected popups fall back to an extension tab", async () => {
   const app = await boot();
+  chrome.action.openPopup = async () => { throw new Error("Popup unavailable"); };
   assert.equal(app.calls.popup.at(-1), "src/switcher.html");
   await app.send({ type: "update-settings", settings: { launchMode: "hybrid" } });
   assert.equal(app.calls.popup.at(-1), "");

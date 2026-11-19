@@ -1,22 +1,37 @@
 {
   "manifest_version": 3,
   "name": "Tab Switcher",
-  "version": "0.1.1",
+  "version": "0.2.1",
   "minimum_chrome_version": "127",
-  "description": "A fast, IDE-style quick switcher for Chrome tabs.",
+  "description": "Search, switch to, and restore Chrome tabs from a keyboard-first switcher.",
   "permissions": [
     "tabs",
     "storage",
     "sessions",
     "activeTab",
-    "scripting"
+    "scripting",
+    "favicon"
   ],
+  "icons": {
+    "16": "src/icons/icon-16.png",
+    "32": "src/icons/icon-32.png",
+    "48": "src/icons/icon-48.png",
+    "128": "src/icons/icon-128.png"
+  },
   "background": {
     "service_worker": "src/background.js",
     "type": "module"
   },
   "action": {
-    "default_title": "Open Tab Switcher"
+    "default_title": "Open Tab Switcher",
+    "default_icon": {
+      "16": "src/icons/icon-16.png",
+      "32": "src/icons/icon-32.png"
+    },
+    "default_popup": "src/switcher.html"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; img-src 'self'"
   },
   "web_accessible_resources": [
     {
@@ -30,11 +45,12 @@
   ],
   "options_page": "src/options.html",
   "commands": {
-    "_execute_action": {
+    "open-switcher": {
       "suggested_key": {
         "default": "Ctrl+E",
         "mac": "Command+E"
-      }
+      },
+      "description": "Open Tab Switcher"
     },
     "open-switcher-alt-windows": {
       "suggested_key": {
@@ -42,7 +58,7 @@
         "mac": "Option+E",
         "windows": "Alt+E"
       },
-      "description": "Open the tab switcher"
+      "description": "Open Tab Switcher (alternate)"
     },
     "switch-previous-tab": {
       "suggested_key": {

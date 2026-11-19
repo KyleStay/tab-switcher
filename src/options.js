@@ -8,10 +8,13 @@ const saveStatus = document.querySelector("#saveStatus");
 const privateTabsAccessMessage = document.querySelector("#privateTabsAccessMessage");
 const privateControls = [...document.querySelectorAll("[data-private-control]")];
 const helpButtons = [...document.querySelectorAll(".help-button")];
+const popupSites = document.querySelector("#popupSites");
 
 let settings = null;
 let privateTabsAccess = false;
 let statusTimer = null;
+let saveQueue = Promise.resolve();
+let resetting = false;
 
 init();
 
@@ -22,19 +25,18 @@ async function init() {
     privateTabsAccess = Boolean(response.privateTabsAccess);
     renderSettings();
     renderCommands(response.commands);
-    setControlsDisabled(false);
+    for (const control of formControls) control.disabled = false;
+    renderDependentSettings();
+    openShortcutSettings.disabled = resetSettings.disabled = false;
     bindEvents();
   } catch (error) {
-    shortcutSummary.textContent = error?.message || "Could not load extension settings.";
+    shortcutSummary.querySelector("dt").textContent = "Shortcuts unavailable";
     setStatus("Settings could not be loaded.", true);
   }
 }
 
 function bindEvents() {
   for (const control of formControls) {
-    control.id ||= `setting-${control.name}`;
-    const label = control.closest("label");
-    if (label) label.htmlFor = control.id;
     control.addEventListener("change", saveSettings);
   }
   for (const button of helpButtons) {
@@ -44,15 +46,11 @@ function bindEvents() {
     description.textContent = button.dataset.help;
     description.hidden = true;
     button.after(description);
-    button.setAttribute("aria-describedby", description.id);
     button.setAttribute("aria-expanded", "false");
     button.setAttribute("aria-controls", description.id);
-    const field = button.closest("label, fieldset");
+    const field = button.closest(".setting-row, fieldset");
     for (const control of field.querySelectorAll("[name]")) control.setAttribute("aria-describedby", description.id);
-    button.removeAttribute("title");
     button.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
       description.hidden = !description.hidden;
       button.setAttribute("aria-expanded", String(!description.hidden));
     });
@@ -64,31 +62,50 @@ function bindEvents() {
       setStatus(error?.message || "Could not open shortcut settings.", true);
     }
   });
+  document.addEventListener("visibilitychange", async () => {
+    if (document.hidden) return;
+    try {
+      const response = await send({ type: "get-settings" });
+      renderCommands(response.commands);
+      privateTabsAccess = Boolean(response.privateTabsAccess);
+      renderDependentSettings();
+    } catch (error) {
+      setStatus(error?.message || "Could not refresh settings.", true);
+    }
+  });
   resetSettings.addEventListener("click", resetToDefaults);
 }
 
 function renderSettings() {
-  for (const control of formControls) {
-    const value = settings[control.name];
-    if (control.type === "checkbox") control.checked = Boolean(value);
-    else if (control.tagName === "TEXTAREA" && Array.isArray(value)) control.value = value.join("\n");
-    else control.value = value;
-  }
-  renderPrivateAccess();
+  for (const control of formControls) renderControl(control);
+}
+
+function renderControl(control) {
+  const value = settings[control.name];
+  if (control.type === "checkbox") control.checked = Boolean(value);
+  else if (Array.isArray(value)) control.value = value.join("\n");
+  else control.value = value;
 }
 
 function renderCommands(commands) {
-  const missing = commands.filter((command) => !command.shortcut);
-  const active = commands
-    .filter((command) => command.shortcut)
-    .map((command) => `${COMMAND_LABELS[command.name] || command.name}: ${command.shortcut}`);
-
-  if (missing.length) {
-    const missingLabels = missing.map((command) => COMMAND_LABELS[command.name] || command.name);
-    shortcutSummary.textContent = `Unassigned: ${missingLabels.join(", ")}. Active: ${active.join(", ") || "none"}.`;
-  } else {
-    shortcutSummary.textContent = active.join(", ");
-  }
+  const assigned = new Map(commands.map(({ name, shortcut }) => [name, shortcut]));
+  const rows = Object.entries(COMMAND_LABELS).filter(([name]) => name !== "_execute_action" || assigned.get(name));
+  shortcutSummary.replaceChildren(...rows.map(([name, label]) => {
+    const row = document.createElement("div");
+    const term = document.createElement("dt");
+    const details = document.createElement("dd");
+    const shortcut = assigned.get(name);
+    term.textContent = label;
+    if (shortcut) {
+      const key = document.createElement("kbd");
+      key.textContent = shortcut;
+      details.append(key);
+    } else {
+      details.textContent = "Unassigned";
+    }
+    row.append(term, details);
+    return row;
+  }));
 }
 
 async function saveSettings(event) {
@@ -99,13 +116,19 @@ async function saveSettings(event) {
     return;
   }
 
-  const value = control.type === "checkbox"
+  const value = controlValue(control);
+  await commitSettings({ [control.name]: value }, "Saved", () => {
+    if (controlValue(control) === value) renderControl(control);
+  });
+}
+
+function controlValue(control) {
+  return control.type === "checkbox"
     ? control.checked
     : control.type === "number"
       ? Number(control.value)
       : control.value;
 
-  await commitSettings({ [control.name]: value }, "Saved");
 }
 
 function setStatus(message, isError = false) {
@@ -120,28 +143,32 @@ function setStatus(message, isError = false) {
 }
 
 async function resetToDefaults() {
-  await commitSettings(DEFAULT_SETTINGS, "Defaults restored");
+  if (!window.confirm("Reset all Tab Switcher settings to their defaults?")) return;
+  resetting = true;
+  for (const control of formControls) control.disabled = true;
+  resetSettings.disabled = true;
+  await commitSettings(DEFAULT_SETTINGS, "Defaults restored", renderSettings);
+  resetting = false;
+  for (const control of formControls) control.disabled = false;
+  renderDependentSettings();
+  resetSettings.disabled = false;
+  resetSettings.focus();
 }
 
-async function commitSettings(patch, successMessage) {
-  setControlsDisabled(true);
-  try {
-    const response = await send({ type: "update-settings", settings: patch });
-    settings = response.settings;
-    privateTabsAccess = Boolean(response.privateTabsAccess);
-    setStatus(successMessage);
-  } catch (error) {
-    setStatus(error?.message || "Could not save settings.", true);
-  } finally {
-    renderSettings();
-    setControlsDisabled(false);
-  }
-}
-
-function setControlsDisabled(disabled) {
-  for (const control of formControls) control.disabled = disabled;
-  resetSettings.disabled = disabled;
-  if (!disabled) renderPrivateAccess();
+function commitSettings(patch, successMessage, render) {
+  saveQueue = saveQueue.then(async () => {
+    try {
+      const response = await send({ type: "update-settings", settings: patch });
+      settings = response.settings;
+      privateTabsAccess = Boolean(response.privateTabsAccess);
+      setStatus(successMessage);
+    } catch (error) {
+      setStatus(error?.message || "Could not save settings.", true);
+    }
+    render();
+    renderDependentSettings();
+  });
+  return saveQueue;
 }
 
 function validationMessage(control) {
@@ -154,11 +181,12 @@ function validationMessage(control) {
   return control.validationMessage || "Setting is invalid.";
 }
 
-function renderPrivateAccess() {
-  if (!settings) return;
+function renderDependentSettings() {
+  if (!settings || resetting) return;
+  popupSites.hidden = document.querySelector("#setting-launchMode").value !== "hybrid";
   privateTabsAccessMessage.textContent = privateTabsAccess
-    ? settings.privateTabsEnabled ? "Private tab support is enabled. Search queries are not saved." : "Chrome has granted incognito access. Enable private tabs below."
-    : "Enable incognito access for this extension in Chrome to use private tab visibility.";
+    ? settings.privateTabsEnabled ? "Search history is off while private tab support is enabled." : "Enable private tab support to include incognito tabs."
+    : "Turn on Allow in Incognito in Chrome’s extension details to use these settings.";
 
   for (const control of privateControls) {
     const isRoot = control.dataset.privateControl === "root";

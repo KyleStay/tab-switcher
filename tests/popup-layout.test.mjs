@@ -29,9 +29,10 @@ test("popup root has deterministic readable width", () => {
 test("result rows preserve readable text space", () => {
   assert.match(cssBlock(".result"), /grid-template-columns:\s*24px\s+minmax\(0,\s*1fr\)\s+auto;/);
   assert.match(cssBlock(".result-text"), /min-width:\s*0;/);
-  assert.match(cssBlock(".row-meta"), /grid-template-columns:\s*minmax\(0,\s*1fr\)\s+52px;/);
+  assert.match(cssBlock(".row-meta"), /max-width:\s*min\(240px,\s*40vw\);/);
   assert.match(cssBlock(".action"), /text-align:\s*right;/);
   assert.match(cssBlock(".badge"), /text-overflow:\s*ellipsis;/);
+  assert.match(css, /\.badges\s*\{\s*grid-column:\s*2 \/ -1/);
 });
 
 test("popup chrome cannot be collapsed by controls or footer hints", () => {
@@ -42,7 +43,7 @@ test("popup chrome cannot be collapsed by controls or footer hints", () => {
 });
 
 test("popup messages do not break hidden state or listbox semantics", () => {
-  assert.match(css, /\[hidden\]\s*\{[^}]+display:\s*none;/);
+  assert.match(css, /\[hidden\]\s*\{[^}]+display:\s*none !important;/);
   assert.match(css, /\.results:empty\s*\{[^}]+display:\s*none;/);
   assert.match(cssBlock(".results"), /min-height:\s*80px;/);
   assert.match(cssBlock(".results"), /flex:\s*1 1 260px;/);

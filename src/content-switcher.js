@@ -32,7 +32,7 @@
     dialog.setAttribute("aria-label", "Tab Switcher");
     const style = document.createElement("style");
     style.textContent = [
-      "dialog { padding: 0; border: 0; border-radius: 10px; width: min(720px, calc(100vw - 24px));",
+      "dialog { padding: 0; border: 0; border-radius: 16px; width: min(720px, calc(100vw - 24px));",
       "height: min(600px, calc(100dvh - 24px)); max-width: none; max-height: none;",
       "box-shadow: 0 20px 60px #0006; overflow: hidden; }",
       "dialog::backdrop { background: #0006; }",
