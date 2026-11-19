@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build reproducible, permission-preserving production and development ZIPs."""
+"""Build reproducible public and development ZIPs."""
 import copy
 import hashlib
 import json
@@ -8,6 +8,15 @@ import shutil
 import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
+PUBLIC_ID = "ncjcgokhonhompppjaabnicnfbiobgfn"
+DEVELOPMENT_PUBLIC_KEY = (
+    "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAogzixsw9EFx00Akfdjg42zjarID2es"
+    "lVJbKoGJjylqjmCtNYYmJ0BW85uw5+bNGLb0lqR3fDi159eZuwP4brDTfmZ68xJbtjFWMRN4W"
+    "nN33/T8M6hPr7j02ay7oqDqVvrQO4T8+NxWUYyIvwxXLXCl2jaJLi3gUkIicm3uXF2rNHg6e"
+    "rnzdf+M1P41DyOEz4mPW6t+ad4sumYDgSXLlNzAvokXYN6AgAMLLNERDtk1zF2fOCBMa2A6f"
+    "Q+ZS2b4FsGzI7193ZrrNtNEslI86RyUGH3wldii0CRStjntMtigKUDT6iT56Ay+gFM3axthgH"
+    "K0WKXNycFB5qoUsnzOYpjQIDAQAB"
+)
 
 
 def build():
@@ -22,6 +31,8 @@ def build():
         shutil.copytree(ROOT / "src", output / "src")
         variant = copy.deepcopy(manifest)
         if channel == "dev":
+            variant["key"] = DEVELOPMENT_PUBLIC_KEY
+            variant["externally_connectable"] = {"ids": [PUBLIC_ID]}
             variant["version"] = version + ".1"
             variant["version_name"] = version + " Dev 1"
             variant["name"] += " Dev"
@@ -33,6 +44,9 @@ def build():
                 path = output / "src" / filename
                 text = path.read_text().replace("Tab Switcher", "Tab Switcher Dev")
                 path.write_text(text)
+        else:
+            # The public toolbar action must reach the worker before opening a popup.
+            variant["action"].pop("default_popup", None)
         (output / "manifest.json").write_text(json.dumps(variant, indent=2) + "\n")
         archive = ROOT / "dist" / f"tab-switcher-{channel}-{variant['version']}.zip"
         with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as bundle:

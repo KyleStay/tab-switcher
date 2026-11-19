@@ -34,8 +34,9 @@ export const SETTING_LIMITS = {
 };
 
 export const COMMAND_LABELS = {
-  _execute_action: "Open switcher",
-  "open-switcher-alt-windows": "Open switcher alternate shortcut",
+  "open-switcher": "Open Tab Switcher",
+  "open-switcher-alt-windows": "Open Tab Switcher (alternate)",
+  _execute_action: "Activate the extension",
   "switch-previous-tab": "Cycle to older recent tab",
   "switch-next-tab": "Cycle to newer recent tab"
 };

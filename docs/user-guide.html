@@ -354,8 +354,8 @@
               </thead>
               <tbody>
                 <tr>
-                  <td>Open switcher</td>
-                  <td><kbd>Command</kbd>+<kbd>E</kbd> on macOS, <kbd>Ctrl</kbd>+<kbd>E</kbd> elsewhere, plus <kbd>Alt</kbd>+<kbd>E</kbd> on Windows</td>
+                  <td>Open Tab Switcher</td>
+                  <td><kbd>Command</kbd>+<kbd>E</kbd> on macOS or <kbd>Ctrl</kbd>+<kbd>E</kbd> elsewhere. Alternate: <kbd>Option</kbd>+<kbd>E</kbd> on macOS or <kbd>Alt</kbd>+<kbd>E</kbd> elsewhere.</td>
                   <td>Configured by Chrome as extension shortcuts. Use the movement shortcuts below after the popup opens.</td>
                 </tr>
                 <tr>
@@ -385,8 +385,8 @@
                 </tr>
                 <tr>
                   <td>Close selected open tab</td>
-                  <td><kbd>Command</kbd>+<kbd>W</kbd> on macOS, <kbd>Ctrl</kbd>+<kbd>W</kbd> elsewhere</td>
-                  <td>Does nothing for recently closed rows.</td>
+                  <td><kbd>Delete</kbd> on macOS, <kbd>Backspace</kbd> on Windows</td>
+                  <td>Works when search is empty. Use the row’s × button to close an open tab with any search.</td>
                 </tr>
                 <tr>
                   <td>Copy selected URL</td>
@@ -462,7 +462,7 @@
           <section id="troubleshooting">
             <h2>Troubleshooting</h2>
             <h3>The shortcut does not open the popup</h3>
-            <p>Go to <code>chrome://extensions/shortcuts</code> and make sure Tab Switcher has an assigned shortcut. Chrome may reject or reserve some combinations.</p>
+            <p>Go to <code>chrome://extensions/shortcuts</code> and check the assignment for <strong>Open Tab Switcher</strong>. Chrome may reject a shortcut that is reserved or already in use.</p>
             <h3>Results look stale</h3>
             <p>Reload the unpacked extension from <code>chrome://extensions</code>. The service worker refreshes tab state on install, startup, and tab/window events.</p>
             <h3>Recently closed tabs are missing</h3>

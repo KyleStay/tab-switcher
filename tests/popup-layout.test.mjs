@@ -43,7 +43,7 @@ test("popup chrome cannot be collapsed by controls or footer hints", () => {
 });
 
 test("popup messages do not break hidden state or listbox semantics", () => {
-  assert.match(css, /\[hidden\]\s*\{[^}]+display:\s*none;/);
+  assert.match(css, /\[hidden\]\s*\{[^}]+display:\s*none !important;/);
   assert.match(css, /\.results:empty\s*\{[^}]+display:\s*none;/);
   assert.match(cssBlock(".results"), /min-height:\s*80px;/);
   assert.match(cssBlock(".results"), /flex:\s*1 1 260px;/);

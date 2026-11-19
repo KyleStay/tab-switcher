@@ -8,15 +8,6 @@
   </head>
   <body>
     <main class="shell" data-density="compact">
-      <section class="onboarding" id="onboarding" hidden>
-        <div>
-          <h1>Tab Switcher</h1>
-          <p id="onboardingShortcut">Set or change the keyboard shortcut in Chrome.</p>
-        </div>
-        <button type="button" id="shortcutSettingsButton">Shortcuts</button>
-        <button type="button" class="icon-button" id="dismissOnboardingButton" aria-label="Dismiss">×</button>
-      </section>
-
       <label class="search" for="queryInput">
         <span class="search-icon" aria-hidden="true"></span>
         <span class="sr-only">Search open and recently closed tabs</span>
@@ -33,11 +24,20 @@
         >
       </label>
 
+      <section class="onboarding" id="onboarding" hidden>
+        <div>
+          <h1>Tab Switcher</h1>
+          <p id="onboardingShortcut">Set or change the keyboard shortcut in Chrome.</p>
+        </div>
+        <button type="button" id="shortcutSettingsButton">Shortcuts</button>
+        <button type="button" class="icon-button" id="dismissOnboardingButton" aria-label="Dismiss shortcut help">×</button>
+      </section>
+
       <div class="meta">
         <span id="resultSummary" role="status">Loading tabs…</span>
         <div class="meta-actions">
           <button type="button" id="retryButton" hidden>Retry</button>
-          <button type="button" id="popupButton" hidden>Popup</button>
+          <button type="button" id="popupButton" hidden>Open toolbar popup</button>
           <button type="button" id="extensionViewButton" hidden>Always use popup here</button>
           <button type="button" id="optionsButton">Settings</button>
         </div>
@@ -51,7 +51,7 @@
         <span><kbd>Enter</kbd> <span id="enterHint">Switch</span></span>
         <span><kbd>Esc</kbd> <span id="escapeHint">Dismiss</span></span>
         <span><kbd id="copyHint">Ctrl+C</kbd> Copy URL</span>
-        <span><kbd id="closeHint">Ctrl+W</kbd> Close tab</span>
+        <span hidden><kbd id="closeHint">Backspace</kbd> Close tab</span>
         <span id="revealHint" hidden><kbd id="revealKey">Ctrl+R</kbd> Reveal private</span>
       </footer>
     </main>

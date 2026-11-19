@@ -1,4 +1,5 @@
 import { buildSearchDocument, rankItems, formatUrl } from "./core/fuzzy.js";
+import { DEVELOPMENT_ID } from "./core/channels.js";
 import { tabKey, wrapIndex } from "./core/mru.js";
 import { normalizeHost } from "./core/defaults.js";
 import { DEFAULT_EXTENSION_VIEW_HOSTS } from "./core/messages.js";
@@ -42,6 +43,7 @@ let ranked = [];
 let selectedIndex = 0;
 let renderedRows = [];
 let closedTabsRequestId = 0;
+let closingTab = false;
 let revealState = clearPrivateTabState();
 let privateTabsByKey = new Map();
 let revealTimer;
@@ -143,11 +145,14 @@ function applySettings() {
     elements.onboardingShortcut.textContent = assigned.length
       ? `Open the switcher with ${assigned.join(" or ")}.`
       : "Set a keyboard shortcut in Chrome.";
+    if (!assigned.length && chrome.runtime.id === DEVELOPMENT_ID) {
+      elements.onboardingShortcut.textContent = "Use the public build’s shortcuts when it’s enabled, or assign a shortcut for Dev.";
+    }
   }
   elements.copyHint.textContent = `${modifier}+C`;
   elements.revealKey.textContent = `${modifier}+R`;
   elements.revealHint.hidden = !state.settings.privateTabsEnabled || state.settings.privateRevealMode !== "manual";
-  elements.closeHint.textContent = `${modifier}+W`;
+  elements.closeHint.textContent = isMac ? "Delete" : "Backspace";
   elements.extensionViewButton.hidden = state.settings.launchMode === "popup" || !canAddActiveSite();
 }
 
@@ -314,7 +319,19 @@ function renderResult(result, index) {
   const action = document.createElement("span");
   action.className = "action";
   action.textContent = actionLabel;
-  meta.append(badges, action);
+  const actions = document.createElement("div");
+  actions.className = "row-actions";
+  actions.append(action);
+  if (item.type === "tab") {
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.className = "icon-button close-tab";
+    closeButton.setAttribute("aria-label", `Close tab: ${titleText}`);
+    closeButton.title = "Close tab";
+    closeButton.textContent = "×";
+    actions.append(closeButton);
+  }
+  meta.append(badges, actions);
 
   row.append(icon, text, meta);
   return row;
@@ -428,9 +445,10 @@ async function handleKeyDown(event) {
   } else if (event.key === "Enter" || shouldActivateSelectionOnSpace(event, elements.queryInput.value)) {
     event.preventDefault();
     await activateSelected();
-  } else if (isCtrlChord(event, ["w"])) {
+  } else if ((event.key === "Backspace" || event.key === "Delete")
+    && !elements.queryInput.value && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
     event.preventDefault();
-    await closeSelected();
+    if (!event.repeat) await closeTab(ranked[selectedIndex]?.item);
   } else if (isCtrlChord(event, ["c"])) {
     if (hasInputSelection()) return;
     event.preventDefault();
@@ -461,7 +479,13 @@ function handlePointerMove(event) {
 async function handleClick(event) {
   const row = event.target.closest(".result");
   if (!row) return;
-  selectedIndex = Number(row.dataset.index);
+  const index = Number(row.dataset.index);
+  if (event.target.closest(".close-tab")) {
+    elements.queryInput.focus({ preventScroll: true });
+    await closeTab(ranked[index]?.item);
+    return;
+  }
+  selectedIndex = index;
   await activateSelected();
 }
 
@@ -493,7 +517,7 @@ function updateSelection() {
   elements.enterHint.parentElement.hidden = !selected;
   elements.escapeHint.textContent = elements.queryInput.value ? "Clear search" : "Dismiss";
   elements.copyHint.parentElement.hidden = !selected;
-  elements.closeHint.parentElement.hidden = !selected || selected.type === "closed";
+  elements.closeHint.parentElement.hidden = selected?.type !== "tab" || Boolean(elements.queryInput.value);
   for (const row of renderedRows) row.ariaSelected = "false";
   const selectedRow = renderedRows[selectedIndex];
   if (!selectedRow) {
@@ -521,19 +545,23 @@ async function activateSelected() {
   }
 }
 
-async function closeSelected() {
-  const selected = ranked[selectedIndex]?.item;
-  if (!selected || selected.type === "closed") return;
+async function closeTab(tab) {
+  if (tab?.type !== "tab" || closingTab) return;
 
+  closingTab = true;
   try {
     closedTabsRequestId += 1;
-    await send({ type: "close-tab", tab: selected });
-    state = await send({ type: "get-state" }).then((response) => response.state);
+    await send({ type: "close-tab", tab: { id: tab.id } });
+    const response = await send({ type: "get-state" });
+    if (!state) return;
+    state = response.state;
     prepareItems();
     render({ preserveSelection: true });
     loadClosedTabs();
   } catch (error) {
     showActionError(error);
+  } finally {
+    closingTab = false;
   }
 }
 

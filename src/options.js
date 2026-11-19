@@ -89,7 +89,8 @@ function renderControl(control) {
 
 function renderCommands(commands) {
   const assigned = new Map(commands.map(({ name, shortcut }) => [name, shortcut]));
-  shortcutSummary.replaceChildren(...Object.entries(COMMAND_LABELS).map(([name, label]) => {
+  const rows = Object.entries(COMMAND_LABELS).filter(([name]) => name !== "_execute_action" || assigned.get(name));
+  shortcutSummary.replaceChildren(...rows.map(([name, label]) => {
     const row = document.createElement("div");
     const term = document.createElement("dt");
     const details = document.createElement("dd");

@@ -1,10 +1,14 @@
 import { DEFAULT_SETTINGS, STORAGE_KEYS, mergeSettings, normalizeHost } from "./core/defaults.js";
+import { DEVELOPMENT_ID, PUBLIC_ID } from "./core/channels.js";
 import { canUseOverlayOnTab, shouldTryOverlay } from "./core/messages.js";
 import { shouldIncludePrivateTabs } from "./core/private-tabs.js";
 import { createInitialState, listTabs, tabKey, wrapIndex } from "./core/mru.js";
 
 const POPUP_PATH = "src/switcher.html";
+const LAUNCH_COMMANDS = ["open-switcher", "open-switcher-alt-windows"];
+const CYCLE_COMMANDS = ["switch-previous-tab", "switch-next-tab"];
 const CYCLE_SESSION_MS = 1400;
+const isPublicBuild = chrome.runtime.id === PUBLIC_ID;
 let settings = DEFAULT_SETTINGS;
 let cycleSession = null;
 let settingsQueue = Promise.resolve();
@@ -21,26 +25,50 @@ async function hydrate() {
 }
 
 function configureAction() {
-  return chrome.action.setPopup({ popup: settings.launchMode === "popup" ? POPUP_PATH : "" });
+  return chrome.action.setPopup({ popup: !isPublicBuild && settings.launchMode === "popup" ? POPUP_PATH : "" });
 }
 
-chrome.commands.onCommand.addListener((command) => {
-  if (command === "open-switcher-alt-windows") queueLaunch();
-  if (command === "switch-previous-tab" || command === "switch-next-tab") {
-    cycleQueue = cycleQueue.then(async () => {
-      await readyPromise;
-      await cycleFrom(command === "switch-previous-tab" ? 1 : -1);
-    }).catch(reportError);
-  }
+chrome.commands.onCommand.addListener((command, tab) => {
+  if (isSwitcherCommand(command)) return runCommand(command, tab);
 });
 
-chrome.action.onClicked.addListener(queueLaunch);
+chrome.action.onClicked.addListener((tab) => runCommand("open-switcher", tab));
 
-function queueLaunch(tab) {
-  launchQueue = launchQueue.then(async () => {
+if (chrome.runtime.id === DEVELOPMENT_ID) {
+  chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
+    if (sender.id !== PUBLIC_ID || message?.type !== "tab-switcher:run-command"
+      || !isSwitcherCommand(message.command) || !Number.isInteger(message.windowId) || message.windowId < 0) return false;
+    runCommand(message.command, undefined, message.windowId).then(sendResponse, () => sendResponse(false));
+    return true;
+  });
+}
+
+function isSwitcherCommand(command) {
+  return LAUNCH_COMMANDS.includes(command) || CYCLE_COMMANDS.includes(command);
+}
+
+function runCommand(command, tab, forwardedWindowId) {
+  const launch = LAUNCH_COMMANDS.includes(command);
+  const queue = launch ? launchQueue : cycleQueue;
+  const task = queue.then(async () => {
     await readyPromise;
-    await openSwitcher(tab || await getActiveTab());
-  }).catch(reportError);
+    const activeTab = forwardedWindowId === undefined
+      ? await (launch && tab ? tab : getActiveTab())
+      : (await chrome.tabs.query({ active: true, windowId: forwardedWindowId }))[0];
+    if (forwardedWindowId !== undefined && !activeTab) return false;
+    if (isPublicBuild && Number.isInteger(activeTab?.windowId)) {
+      const handled = await chrome.runtime.sendMessage(DEVELOPMENT_ID, {
+        type: "tab-switcher:run-command", command, windowId: activeTab.windowId
+      }).catch(() => false);
+      if (handled === true) return true;
+    }
+    if (launch) await openSwitcher(activeTab);
+    else await cycleFrom(command === "switch-previous-tab" ? 1 : -1, activeTab);
+    return true;
+  });
+  if (launch) launchQueue = task.catch(reportError);
+  else cycleQueue = task.catch(reportError);
+  return task;
 }
 
 function reportError(error) {
@@ -210,9 +238,9 @@ async function getSwitcherState(sender) {
     getTabs(), getActiveTab(sender), chrome.storage.local.get(STORAGE_KEYS.firstRunSeen), chrome.storage.session.get(STORAGE_KEYS.lastQuery)
   ]);
   const firstRunSeen = Boolean(stored[STORAGE_KEYS.firstRunSeen]);
-  const launchShortcuts = firstRunSeen ? [] : (await chrome.commands.getAll())
-    .filter(({ name, shortcut }) => shortcut && (name === "_execute_action" || name === "open-switcher-alt-windows"))
-    .map(({ shortcut }) => shortcut);
+  const commands = firstRunSeen ? [] : await chrome.commands.getAll();
+  const shortcuts = new Map(commands.map(({ name, shortcut }) => [name, shortcut]));
+  const launchShortcuts = [...LAUNCH_COMMANDS, "_execute_action"].map((name) => shortcuts.get(name)).filter(Boolean);
   return {
     activeTab: activeTab?.incognito && !snapshot.includePrivate ? null : activeTab,
     currentWindowId: activeTab?.windowId ?? null,
@@ -246,8 +274,8 @@ async function activateTab(id) {
   await chrome.tabs.update(tab.id, { active: true });
 }
 
-async function cycleFrom(direction) {
-  const [snapshot, activeTab] = await Promise.all([getTabs(), getActiveTab()]);
+async function cycleFrom(direction, activeTab) {
+  const snapshot = await getTabs();
   const currentWindowId = settings.mruCycleScope === "current-window" ? activeTab?.windowId ?? null : null;
   const tabs = listTabs(snapshot.mru, { currentWindowId, currentWindowOnly: settings.mruCycleScope === "current-window" });
   if (tabs.length < 2) return;

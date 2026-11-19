@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Tab Switcher",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "minimum_chrome_version": "127",
   "description": "Search, switch to, and restore Chrome tabs from a keyboard-first switcher.",
   "permissions": [
@@ -45,11 +45,12 @@
   ],
   "options_page": "src/options.html",
   "commands": {
-    "_execute_action": {
+    "open-switcher": {
       "suggested_key": {
         "default": "Ctrl+E",
         "mac": "Command+E"
-      }
+      },
+      "description": "Open Tab Switcher"
     },
     "open-switcher-alt-windows": {
       "suggested_key": {
@@ -57,7 +58,7 @@
         "mac": "Option+E",
         "windows": "Alt+E"
       },
-      "description": "Open the tab switcher"
+      "description": "Open Tab Switcher (alternate)"
     },
     "switch-previous-tab": {
       "suggested_key": {
